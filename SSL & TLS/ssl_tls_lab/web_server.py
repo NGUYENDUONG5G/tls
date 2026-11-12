@@ -52,28 +52,30 @@ def make_server(port=0):
             self.send(200, content_type, body)
 
         def do_POST(self):
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                length = -1
+            # Read the body before any reply: answering with unread data
+            # makes Windows reset the connection before the client sees it.
+            body = self.rfile.read(length) if 0 < length <= 200_000 else b""
             if urlsplit(self.path).path != "/api/message" or not secrets.compare_digest(
                 self.headers.get("X-Lab-Token", ""), token
             ):
                 self.send(403, "application/json", b'{"error":"Forbidden"}')
                 return
             try:
-                length = int(self.headers.get("Content-Length", "0"))
-                if length < 1 or length > 200_000:
+                if not body:
                     raise ValueError("Kích thước yêu cầu không hợp lệ")
-                data = json.loads(self.rfile.read(length))
+                data = json.loads(body)
                 if not isinstance(data.get("message"), str) or not isinstance(
                     data.get("tamper", False), bool
                 ):
                     raise ValueError("Thông điệp hoặc tùy chọn không hợp lệ")
-                mode = data.get("mode", "model")
-                if mode not in ("model", "real"):
-                    raise ValueError("Chế độ không hợp lệ")
                 result = run_protocol(
                     data["message"],
                     DemoConfig(**data["config"]),
                     data.get("tamper", False),
-                    mode,
                 )
                 self.send(
                     200,

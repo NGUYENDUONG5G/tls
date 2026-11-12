@@ -1,11 +1,80 @@
+import hashlib
 import json
+import os
 
 import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+from ssl_tls_lab import tls_wire
 from ssl_tls_lab.message_demo import DemoConfig, run_message
+from ssl_tls_lab.protocols import run_protocol
+
+TLS12_STEPS = [
+    "Chuẩn bị khóa và chứng chỉ của B",
+    "Client Hello",
+    "Server Hello",
+    "Server Certificate",
+    "Server Key Exchange Generation",
+    "Server Key Exchange",
+    "Server Hello Done",
+    "Client Key Exchange Generation",
+    "Client Key Exchange",
+    "Client Encryption Keys Calculation",
+    "Client Change Cipher Spec",
+    "Client Handshake Finished",
+    "Server Encryption Keys Calculation",
+    "Server Change Cipher Spec",
+    "Server Handshake Finished",
+    "Client Application Data",
+    "B xác thực tag và giải mã",
+]
+TLS13_STEPS = [
+    "Chuẩn bị khóa và chứng chỉ của B",
+    "Client Key Exchange Generation",
+    "Client Hello",
+    "Server Key Exchange Generation",
+    "Server Hello",
+    "Server Handshake Keys Calc",
+    "Client Handshake Keys Calc",
+    "Server Change Cipher Spec",
+    "Server Encrypted Extensions",
+    "Server Certificate",
+    "Server Certificate Verify",
+    "Server Handshake Finished",
+    "Server Application Keys Calc",
+    "Client Application Keys Calc",
+    "Client Change Cipher Spec",
+    "Client Handshake Finished",
+    "Client Application Data",
+    "B xác thực tag và giải mã",
+]
+MODEL_CONFIGS = [
+    DemoConfig(),
+    DemoConfig(cipher="AES-256-GCM", hash_name="SHA-384"),
+    DemoConfig(exchange="DHE 2048"),
+    DemoConfig(exchange="ECDHE X25519"),
+    DemoConfig(exchange="ECDHE P-256", cipher="AES-256-GCM", hash_name="SHA-384"),
+    DemoConfig(exchange="ECDHE X25519", authentication="ECDSA P-256"),
+    DemoConfig(exchange="ECDHE P-256", authentication="ECDSA P-256"),
+    DemoConfig(version="TLS 1.3", exchange="ECDHE X25519"),
+    DemoConfig(
+        version="TLS 1.3",
+        exchange="ECDHE X25519",
+        cipher="AES-256-GCM",
+        hash_name="SHA-384",
+    ),
+    DemoConfig(version="TLS 1.3", exchange="ECDHE P-256", authentication="ECDSA P-256"),
+    DemoConfig(version="TLS 1.3", exchange="DHE ffdhe2048"),
+    DemoConfig(
+        version="TLS 1.3",
+        exchange="DHE ffdhe2048",
+        authentication="ECDSA P-256",
+        cipher="AES-256-GCM",
+        hash_name="SHA-384",
+    ),
+]
 
 
 def assert_key_matches_certificate(private_pem, certificate_pem):
@@ -20,79 +89,235 @@ def assert_key_matches_certificate(private_pem, certificate_pem):
     assert public_bytes(key.public_key()) == public_bytes(cert.public_key())
 
 
+def step(result, title):
+    return next(s for s in result["steps"] if s["title"] == title)
+
+
+# --- Known values published in The Illustrated TLS 1.2 / 1.3 Connection ----
+
+SHARED = bytes.fromhex(
+    "df4a291baa1eb7cfa6934b29b474baad2697e29f1f920dcc77c8a0a088447624"
+)
+
+
+def test_tls13_handshake_keys_match_illustrated_tls13():
+    hello_hash = bytes.fromhex(
+        "e05f64fcd082bdb0dce473adf669c2769f257a1c75a51b7887468b5e0e7a7de4"
+        "f4d34555112077f16e079019d5a845bd"
+    )
+    keys = tls_wire.tls13_handshake_secrets(SHARED, hello_hash, hashlib.sha384, 32)
+    assert keys["handshake_secret"].hex() == (
+        "bdbbe8757494bef20de932598294ea65b5e6bf6dc5c02a960a2de2eaa9b07c92"
+        "9078d2caa0936231c38d1725f179d299"
+    )
+    assert keys["server_secret"].hex() == (
+        "23323da031634b241dd37d61032b62a4f450584d1f7f47983ba2f7cc0cdcc39a"
+        "68f481f2b019f9403a3051908a5d1622"
+    )
+    assert keys["server_key"].hex() == (
+        "9f13575ce3f8cfc1df64a77ceaffe89700b492ad31b4fab01c4792be1b266b7f"
+    )
+    assert keys["server_iv"].hex() == "9563bc8b590f671f488d2da3"
+    assert keys["client_key"].hex() == (
+        "1135b4826a9a70257e5a391ad93093dfd7c4214812f493b3e3daae1eb2b1ac69"
+    )
+    assert keys["client_iv"].hex() == "4256d2e0e88babdd05eb2f27"
+
+
+def test_tls13_application_keys_and_record_match_illustrated_tls13():
+    handshake_secret = bytes.fromhex(
+        "bdbbe8757494bef20de932598294ea65b5e6bf6dc5c02a960a2de2eaa9b07c92"
+        "9078d2caa0936231c38d1725f179d299"
+    )
+    handshake_hash = bytes.fromhex(
+        "fa6800169a6baac19159524fa7b9721b41be3c9db6f3f93fa5ff7e3db3ece204"
+        "d2b456c51046e40ec5312c55a86126f5"
+    )
+    keys = tls_wire.tls13_application_secrets(
+        handshake_secret, handshake_hash, hashlib.sha384, 32
+    )
+    assert keys["server_key"].hex() == (
+        "01f78623f17e3edcc09e944027ba3218d57c8e0db93cd3ac419309274700ac27"
+    )
+    assert keys["server_iv"].hex() == "196a750b0c5049c0cc51a541"
+    assert keys["client_key"].hex() == (
+        "de2f4c7672723a692319873e5c227606691a32d1c59d8b9f51dbb9352e9ca9cc"
+    )
+    assert keys["client_iv"].hex() == "bb007956f474b25de902432f"
+    # First wrapped record of the server: Encrypted Extensions.
+    sealed = tls_wire.tls13_seal(
+        bytes.fromhex(
+            "9f13575ce3f8cfc1df64a77ceaffe89700b492ad31b4fab01c4792be1b266b7f"
+        ),
+        bytes.fromhex("9563bc8b590f671f488d2da3"),
+        0,
+        tls_wire.HANDSHAKE,
+        bytes.fromhex("080000020000"),
+    )
+    assert sealed.hex() == (
+        "17030300176be02f9da7c2dc9ddef56f2468b90adfa25101ab0344ae"
+    )
+
+
+def test_tls12_master_secret_matches_illustrated_tls12():
+    client_random = bytes(range(0x00, 0x20))
+    server_random = bytes(range(0x70, 0x90))
+    master = tls_wire.tls12_master_secret(
+        SHARED, client_random, server_random, hashlib.sha256
+    )
+    assert master.hex() == (
+        "916abf9da55973e13614ae0a3f5d3f37b023ba129aee02cc9134338127cd7049"
+        "781c8e19fc1eb2a7387ac06ae237344c"
+    )
+
+
+# --- Step-by-step model ----------------------------------------------------
+
+
+@pytest.mark.parametrize("config", MODEL_CONFIGS)
+def test_model_follows_illustrated_steps_and_delivers_message(config):
+    text = "Chào B! 🔐 こんにちは"
+    result = run_protocol(text, config)
+    assert result["status"] == "success" and result["output"] == text
+    titles = [s["title"] for s in result["steps"]]
+    if config.version == "TLS 1.3":
+        assert titles == TLS13_STEPS
+    elif config.exchange == "RSA key transport":
+        assert titles == [
+            t
+            for t in TLS12_STEPS
+            if t not in ("Server Key Exchange Generation", "Server Key Exchange")
+        ]
+    else:
+        assert titles == TLS12_STEPS
+    for s in result["steps"]:
+        assert s["description"] and s["inputs"] and s["outputs"]
+        assert "{" not in s["description"] + s.get("formula", "")
+    assert step(result, "B xác thực tag và giải mã")["outputs"][
+        "Khớp thông điệp ban đầu"
+    ]
+    metrics = result["metrics"]
+    assert metrics["plaintext_bytes"] == len(text.encode())
+    overhead = 22 if config.version == "TLS 1.3" else 29
+    assert metrics["frame_bytes"] == len(text.encode()) + overhead
+    json.dumps(result, ensure_ascii=False)
+
+
+@pytest.mark.parametrize(
+    "config", [DemoConfig(), DemoConfig(version="TLS 1.3", exchange="ECDHE X25519")]
+)
+def test_modified_record_is_rejected_without_plaintext(config):
+    result = run_message("A gửi B", config, tamper=True)
+    assert result["status"] == "rejected" and result["output"] is None
+    last = result["steps"][-1]["outputs"]
+    assert last["Kiểm tra auth tag"] == "không hợp lệ"
+    assert last["Thông điệp B nhận (UTF-8)"] is None
+
+
 @pytest.mark.parametrize(
     "config",
     [
-        DemoConfig(),
-        DemoConfig(exchange="ECDHE X25519"),
+        DemoConfig(version="TLS 1.3", exchange="ECDHE X25519"),
         DemoConfig(
             version="TLS 1.3",
-            exchange="ECDHE X25519",
+            exchange="DHE ffdhe2048",
             cipher="AES-256-GCM",
             hash_name="SHA-384",
         ),
     ],
 )
-def test_message_reaches_b_over_tcp_and_keys_match(config):
-    text = "Chào B! 🔐 こんにちは"
-    result = run_message(text, config)
-    assert result["status"] == "success" and result["output"] == text
-    assert result["metrics"]["plaintext_bytes"] == len(text.encode("utf-8"))
-    assert result["metrics"]["frame_bytes"] == len(text.encode("utf-8")) + 32
-    keys = next(
-        s for s in result["steps"] if s["title"] == "Dẫn xuất khóa phiên độc lập"
+def test_tls13_shown_keys_decrypt_application_record(config):
+    result = run_message("Xin chào B", config)
+    keys = step(result, "Client Application Keys Calc")["outputs"]
+    record = bytes.fromhex(
+        step(result, "Client Application Data")["outputs"]["Record đã bọc (hex)"]
     )
-    assert keys["details"]["keys_match"] is True
-    assert keys["details"]["A_to_B_key_A"] == keys["details"]["A_to_B_key_B"]
-    assert result["steps"][-1]["details"]["matches_original"] is True
-    json.dumps(result, ensure_ascii=False)
+    key = bytes.fromhex(keys["client application key (hex)"])
+    iv = bytes.fromhex(keys["client application IV (hex)"])
+    assert record[:3] == b"\x17\x03\x03"
+    inner = AESGCM(key).decrypt(iv, record[5:], record[:5])  # sequence 0
+    assert inner == "Xin chào B".encode() + b"\x17"
 
 
-def test_modified_tag_is_rejected_without_plaintext():
-    result = run_message("A gửi B", DemoConfig(exchange="ECDHE X25519"), tamper=True)
-    assert result["status"] == "rejected" and result["output"] is None
-    assert result["steps"][-1]["details"]["tag"] == "không hợp lệ"
-    assert result["steps"][-1]["details"]["plaintext_utf8"] is None
+@pytest.mark.parametrize(
+    "config",
+    [
+        DemoConfig(),
+        DemoConfig(exchange="ECDHE P-256", cipher="AES-256-GCM", hash_name="SHA-384"),
+    ],
+)
+def test_tls12_shown_keys_decrypt_application_record(config):
+    result = run_message("Xin chào B", config)
+    keys = step(result, "Client Encryption Keys Calculation")["outputs"]
+    record = bytes.fromhex(
+        step(result, "Client Application Data")["outputs"]["Record (hex)"]
+    )
+    key = bytes.fromhex(keys["client write key (hex)"])
+    iv = bytes.fromhex(keys["client write IV, phần cố định (hex)"])
+    explicit, protected = record[5:13], record[13:]
+    aad = (1).to_bytes(8, "big") + record[:3] + (len(protected) - 16).to_bytes(2, "big")
+    assert AESGCM(key).decrypt(iv + explicit, protected, aad) == "Xin chào B".encode()
 
 
-def test_rejects_incompatible_config_and_oversize():
+def test_tls13_shown_ephemeral_keys_reproduce_shared_secret():
+    from cryptography.hazmat.primitives.asymmetric import x25519
+
+    result = run_message("A → B", DemoConfig(version="TLS 1.3", exchange="ECDHE X25519"))
+    a_private = step(result, "Client Key Exchange Generation")["outputs"][
+        "Khóa riêng tạm thời của A (hex)"
+    ]
+    b_public = step(result, "Server Key Exchange Generation")["outputs"][
+        "Khóa công khai tạm thời của B (hex)"
+    ]
+    secret = x25519.X25519PrivateKey.from_private_bytes(
+        bytes.fromhex(a_private)
+    ).exchange(x25519.X25519PublicKey.from_public_bytes(bytes.fromhex(b_public)))
+    assert (
+        secret.hex()
+        == step(result, "Client Handshake Keys Calc")["outputs"]["shared_secret (hex)"]
+        == step(result, "Server Handshake Keys Calc")["outputs"]["shared_secret (hex)"]
+    )
+
+
+@pytest.mark.parametrize(
+    "config",
+    [DemoConfig(), DemoConfig(version="TLS 1.3", exchange="ECDHE X25519", authentication="ECDSA P-256")],
+)
+def test_exposed_certificate_private_keys_match_certificates(config):
+    prepared = run_protocol("A → B", config)["steps"][0]["outputs"]
+    assert_key_matches_certificate(
+        prepared["Khóa riêng chứng chỉ server (PEM)"],
+        prepared["Chứng chỉ server (PEM)"],
+    )
+    assert_key_matches_certificate(
+        prepared["Khóa riêng CA thử nghiệm (PEM)"],
+        prepared["Chứng chỉ CA tin cậy (PEM)"],
+    )
+
+
+def test_message_size_limits():
     with pytest.raises(ValueError):
-        run_message("a", DemoConfig(version="TLS 1.3"))
-    with pytest.raises(ValueError):
-        run_message("a", DemoConfig(cipher="AES-256-GCM"))
+        run_message("", DemoConfig())
     with pytest.raises(ValueError):
         run_message("x" * 32769, DemoConfig())
+    with pytest.raises(ValueError):
+        run_message("a", DemoConfig(cipher="AES-256-GCM"))
 
 
-@pytest.mark.parametrize("exchange", ["RSA key transport", "ECDHE X25519"])
-def test_real_tls12_handshake_transfer_and_tamper(exchange):
-    from ssl_tls_lab.real_tls import run_real_tls
-
-    cfg = DemoConfig(exchange=exchange)
-    result = run_real_tls("Xin chào B", cfg)
-    assert result["status"] == "success" and result["output"] == "Xin chào B"
-    negotiated = next(
-        s for s in result["steps"] if s["title"] == "Handshake TLS hoàn tất"
-    )
-    assert negotiated["details"]["version"] == "TLSv1.2"
-    assert negotiated["details"]["cipher"] == (
-        "ECDHE-RSA-AES128-GCM-SHA256"
-        if exchange.startswith("ECDHE")
-        else "AES128-GCM-SHA256"
-    )
-    wire = next(
-        s for s in result["steps"] if s["title"] == "Truyền TLS record qua TCP loopback"
-    )
-    assert bytes.fromhex(wire["details"]["wire_hex"])[0] == 23
-    rejected = run_real_tls("Xin chào B", cfg, tamper=True)
-    assert rejected["status"] == "rejected" and rejected["output"] is None
+def test_large_message_is_split_into_records():
+    text = "x" * 20000
+    result = run_message(text, DemoConfig(version="TLS 1.3", exchange="ECDHE X25519"))
+    assert result["output"] == text
+    assert step(result, "Client Application Data")["outputs"]["Số record"] == 2
 
 
-def test_web_api_both_modes_and_rejects_missing_token():
+def test_web_api_runs_model_and_rejects_missing_token():
     import re
     import threading
     import urllib.error
     import urllib.request
+    from dataclasses import asdict
+
     from ssl_tls_lab.web_server import make_server
 
     server = make_server()
@@ -101,25 +326,19 @@ def test_web_api_both_modes_and_rejects_missing_token():
     base = f"http://127.0.0.1:{server.server_port}"
     try:
         page = urllib.request.urlopen(base, timeout=5).read().decode()
+        assert 'id="mode"' not in page
         token = re.search(r'window.LAB_TOKEN="([0-9a-f]+)"', page).group(1)
-        from dataclasses import asdict
-
-        for mode in ("model", "real"):
-            data = json.dumps(
-                {
-                    "mode": mode,
-                    "message": "Xin chào B",
-                    "config": asdict(DemoConfig()),
-                    "tamper": False,
-                }
-            ).encode()
-            req = urllib.request.Request(
-                base + "/api/message",
-                data,
-                headers={"Content-Type": "application/json", "X-Lab-Token": token},
-            )
-            result = json.loads(urllib.request.urlopen(req, timeout=5).read())
-            assert result["mode"] == mode and result["output"] == "Xin chào B"
+        data = json.dumps(
+            {"message": "Xin chào B", "config": asdict(DemoConfig()), "tamper": False}
+        ).encode()
+        req = urllib.request.Request(
+            base + "/api/message",
+            data,
+            headers={"Content-Type": "application/json", "X-Lab-Token": token},
+        )
+        result = json.loads(urllib.request.urlopen(req, timeout=10).read())
+        assert result["output"] == "Xin chào B"
+        assert result["steps"][1]["title"] == "Client Hello"
         with pytest.raises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(
                 urllib.request.Request(base + "/api/message", b"{}"), timeout=5
@@ -129,6 +348,37 @@ def test_web_api_both_modes_and_rejects_missing_token():
         server.shutdown()
         server.server_close()
         thread.join()
+
+
+def test_cli_writes_private_json(tmp_path):
+    import subprocess
+    import sys
+
+    output = tmp_path / "secret.json"
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ssl_tls_lab",
+            "message",
+            "--version",
+            "TLS 1.3",
+            "--text",
+            "A → B",
+            "--output",
+            str(output),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    if os.name != "nt":
+        assert output.stat().st_mode & 0o777 == 0o600
+    result = json.loads(output.read_text(encoding="utf-8"))
+    assert [s["title"] for s in result["steps"]] == TLS13_STEPS
+
+
+# --- Legacy backend (SSL 2.0 – TLS 1.1) ------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -217,32 +467,6 @@ def test_legacy_isolated_real_protocol(config):
         assert result["steps"][-1]["details"]["observed_group"] == config.exchange
 
 
-@pytest.mark.parametrize(
-    "cipher,hash_name,actual",
-    [
-        ("AES-128-GCM", "SHA-256", "TLS_AES_128_GCM_SHA256"),
-        ("AES-256-GCM", "SHA-384", "TLS_AES_256_GCM_SHA384"),
-    ],
-)
-def test_tls13_real_pins_requested_cipher_and_rejects_tamper(cipher, hash_name, actual):
-    from ssl_tls_lab.protocols import run_protocol
-
-    cfg = DemoConfig(
-        version="TLS 1.3", exchange="ECDHE X25519", cipher=cipher, hash_name=hash_name
-    )
-    for tamper in (False, True):
-        result = run_protocol("Xin chào B", cfg, tamper)
-        assert result["status"] == ("rejected" if tamper else "success")
-        assert (result["output"] is None) == tamper
-        observed = next(
-            s for s in result["steps"] if s["title"] == "Handshake TLS hoàn tất"
-        )
-        assert (
-            observed["details"]["version"] == "TLSv1.3"
-            and observed["details"]["cipher"] == actual
-        )
-
-
 def test_ssl1_is_history_only_and_legacy_tamper_is_explicit():
     from ssl_tls_lab.protocols import run_protocol
 
@@ -254,77 +478,6 @@ def test_ssl1_is_history_only_and_legacy_tamper_is_explicit():
             DemoConfig(version="SSL 2.0", cipher="RC4-128", hash_name="MD5"),
             tamper=True,
         )
-
-
-@pytest.mark.parametrize(
-    "version,exchange,auth",
-    [
-        ("TLS 1.2", "DHE 2048", "RSA"),
-        ("TLS 1.2", "ECDHE X25519", "RSA"),
-        ("TLS 1.2", "ECDHE P-256", "RSA"),
-        ("TLS 1.2", "ECDHE X25519", "ECDSA P-256"),
-        ("TLS 1.2", "ECDHE P-256", "ECDSA P-256"),
-        ("TLS 1.3", "ECDHE X25519", "RSA"),
-        ("TLS 1.3", "ECDHE P-256", "RSA"),
-        ("TLS 1.3", "ECDHE X25519", "ECDSA P-256"),
-        ("TLS 1.3", "ECDHE P-256", "ECDSA P-256"),
-        ("TLS 1.3", "DHE ffdhe2048", "RSA"),
-        ("TLS 1.3", "DHE ffdhe2048", "ECDSA P-256"),
-    ],
-)
-@pytest.mark.parametrize(
-    "cipher,hash_name", [("AES-128-GCM", "SHA-256"), ("AES-256-GCM", "SHA-384")]
-)
-def test_real_handshake_checks_selected_group_and_authentication(
-    version, exchange, auth, cipher, hash_name
-):
-    from ssl_tls_lab.protocols import run_protocol
-
-    config = DemoConfig(
-        version=version,
-        exchange=exchange,
-        authentication=auth,
-        cipher=cipher,
-        hash_name=hash_name,
-    )
-    result = run_protocol("Thông điệp A → B", config)
-    assert result["status"] == "success" and result["output"] == "Thông điệp A → B"
-    handshake = next(
-        step["details"]
-        for step in result["steps"]
-        if step["title"] == "Handshake TLS hoàn tất"
-    )
-    assert handshake["observed_group"] == exchange
-    assert handshake["authentication"] == auth
-    if version == "TLS 1.2":
-        assert handshake["cipher"].startswith(
-            "ECDHE-ECDSA-"
-            if auth.startswith("ECDSA")
-            else "DHE-RSA-"
-            if exchange.startswith("DHE")
-            else "ECDHE-RSA-"
-        )
-
-
-@pytest.mark.parametrize(
-    "exchange,auth",
-    [
-        ("DHE 2048", "RSA"),
-        ("ECDHE X25519", "ECDSA P-256"),
-        ("ECDHE P-256", "ECDSA P-256"),
-    ],
-)
-def test_model_cryptographic_steps_match_and_reject_tampering(exchange, auth):
-    config = DemoConfig(exchange=exchange, authentication=auth)
-    good = run_message("Xin chào B", config)
-    assert good["output"] == "Xin chào B"
-    assert next(
-        step["details"]["matches"]
-        for step in good["steps"]
-        if step["title"] == "Kiểm tra chữ ký và tính bí mật chung"
-    )
-    bad = run_message("Xin chào B", config, tamper=True)
-    assert bad["status"] == "rejected" and bad["output"] is None
 
 
 @pytest.mark.parametrize(
@@ -347,230 +500,3 @@ def test_unsupported_exchange_auth_pairs_are_rejected(config):
         config.validate()
 
 
-@pytest.mark.parametrize("auth", ["RSA", "ECDSA P-256"])
-def test_model_tls13_ffdhe2048(auth):
-    config = DemoConfig(
-        version="TLS 1.3", exchange="DHE ffdhe2048", authentication=auth
-    )
-    result = run_message("Xin chào B", config)
-    assert result["output"] == "Xin chào B"
-    assert next(
-        s["details"]["matches"]
-        for s in result["steps"]
-        if s["title"] == "Kiểm tra chữ ký và tính bí mật chung"
-    )
-
-
-def test_model_step_inputs_outputs_follow_actual_message_and_tampered_tag():
-    from ssl_tls_lab.protocols import run_protocol
-
-    config = DemoConfig(
-        version="TLS 1.3", exchange="DHE ffdhe2048", authentication="ECDSA P-256"
-    )
-    result = run_protocol("Xin chào B", config, tamper=True, mode="model")
-    assert all(step["inputs"] and step["outputs"] for step in result["steps"])
-    assert all("Đầu vào" not in step["inputs"] for step in result["steps"])
-    enc = next(s for s in result["steps"] if s["title"] == "AES-GCM mã hóa và tạo tag")
-    sign = next(s for s in result["steps"] if s["title"] == "B ký khóa tạm thời")
-    kdf = next(
-        s for s in result["steps"] if s["title"] == "Dẫn xuất khóa phiên độc lập"
-    )
-    transfer = next(
-        s for s in result["steps"] if s["title"] == "Truyền bản mã qua TCP loopback"
-    )
-    dec = next(s for s in result["steps"] if s["title"] == "Kiểm tra tag và giải mã")
-    assert enc["inputs"]["Thông điệp (UTF-8)"] == "Xin chào B"
-    assert (
-        sign["inputs"]["Dữ liệu được ký (hex)"]
-        == sign["inputs"]["Client random (hex)"]
-        + sign["inputs"]["Server random (hex)"]
-        + sign["outputs"]["Khóa công khai tạm thời của B (hex)"]
-    )
-    assert len(kdf["inputs"]["HKDF salt (hex)"]) == 64
-    assert transfer["inputs"]["Tag gốc (hex)"] == enc["outputs"]["Tag xác thực (hex)"]
-    assert dec["inputs"]["Tag nhận được (hex)"] != enc["outputs"]["Tag xác thực (hex)"]
-    assert dec["outputs"]["Bản rõ nhận được (UTF-8)"] is None
-    assert dec["outputs"]["Kết quả kiểm tra tag"] == "không hợp lệ"
-
-
-def test_real_tls_step_inputs_outputs_contain_observed_record_and_no_invented_key():
-    from ssl_tls_lab.protocols import run_protocol
-
-    config = DemoConfig(exchange="ECDHE X25519", authentication="ECDSA P-256")
-    result = run_protocol("Xin chào B", config, tamper=True)
-    assert all(step["inputs"] and step["outputs"] for step in result["steps"])
-    assert all("Đầu vào" not in step["inputs"] for step in result["steps"])
-    enc = next(
-        s
-        for s in result["steps"]
-        if s["title"] == "Mã hóa thành TLS application record"
-    )
-    transfer = next(
-        s for s in result["steps"] if s["title"] == "Truyền TLS record qua TCP loopback"
-    )
-    dec = next(
-        s for s in result["steps"] if s["title"] == "Xác thực và giải mã TLS record"
-    )
-    assert "chưa trích xuất" in enc["inputs"]["Khóa phiên"].lower()
-    record = bytes.fromhex(enc["outputs"]["TLS application record (hex)"])
-    assert enc["outputs"]["Nonce tường minh của record (hex)"] == record[5:13].hex()
-    assert enc["outputs"]["Tag xác thực GCM (hex)"] == record[-16:].hex()
-    assert (
-        transfer["inputs"]["TLS record trước khi truyền (hex)"]
-        == enc["outputs"]["TLS application record (hex)"]
-    )
-    assert (
-        transfer["outputs"]["TLS record sau khi truyền (hex)"]
-        == dec["inputs"]["TLS record nhận được (hex)"]
-    )
-    assert (
-        transfer["inputs"]["TLS record trước khi truyền (hex)"]
-        != transfer["outputs"]["TLS record sau khi truyền (hex)"]
-    )
-    assert dec["outputs"]["Thông điệp nhận (UTF-8)"] is None
-
-
-def test_real_rsa_components_are_from_certificate_key():
-    import math
-    from ssl_tls_lab.protocols import run_protocol
-
-    prepared = run_protocol("A → B", DemoConfig(), mode="real")["steps"][0]
-    key = serialization.load_pem_private_key(
-        prepared["outputs"]["Khóa riêng chứng chỉ server (PEM)"].encode(), None
-    ).private_numbers()
-    generation, relation = prepared["operations"][:2]
-    assert int(generation["outputs"]["Số nguyên tố bí mật p (hex)"], 16) == key.p
-    assert int(generation["outputs"]["Số nguyên tố bí mật q (hex)"], 16) == key.q
-    assert (
-        int(relation["outputs"]["Modulus n = p × q (hex)"], 16) == key.public_numbers.n
-    )
-    assert int(relation["outputs"]["Số mũ bí mật d (hex)"], 16) == key.d
-    assert key.public_numbers.e * key.d % math.lcm(key.p - 1, key.q - 1) == 1
-
-
-@pytest.mark.parametrize(
-    "mode,config",
-    [
-        ("real", DemoConfig()),
-        ("real", DemoConfig(exchange="ECDHE P-256", authentication="ECDSA P-256")),
-        (
-            "real",
-            DemoConfig(
-                version="TLS 1.3", exchange="ECDHE X25519", authentication="ECDSA P-256"
-            ),
-        ),
-        ("model", DemoConfig(exchange="ECDHE X25519", authentication="ECDSA P-256")),
-    ],
-)
-def test_exposed_certificate_private_keys_match_certificates(mode, config):
-    from ssl_tls_lab.protocols import run_protocol
-
-    prepared = run_protocol("A → B", config, mode=mode)["steps"][0]["outputs"]
-    assert_key_matches_certificate(
-        prepared["Khóa riêng chứng chỉ server (PEM)"],
-        prepared["Chứng chỉ server (PEM)"],
-    )
-    assert_key_matches_certificate(
-        prepared["Khóa riêng CA thí nghiệm (PEM)"],
-        prepared["Chứng chỉ CA tin cậy (PEM)"],
-    )
-
-
-@pytest.mark.parametrize("exchange", ["DHE 2048", "ECDHE X25519", "ECDHE P-256"])
-def test_model_exposed_ephemeral_keys_reproduce_shared_secret(exchange):
-    from ssl_tls_lab.protocols import run_protocol
-
-    result = run_protocol("A → B", DemoConfig(exchange=exchange), mode="model")
-    signed = next(s for s in result["steps"] if s["title"] == "B ký khóa tạm thời")
-    shared = next(
-        s
-        for s in result["steps"]
-        if s["title"] == "Kiểm tra chữ ký và tính bí mật chung"
-    )
-    a = serialization.load_pem_private_key(
-        signed["outputs"]["Khóa riêng tạm thời của A (PEM)"].encode(), password=None
-    )
-    b = serialization.load_pem_private_key(
-        signed["outputs"]["Khóa riêng tạm thời của B (PEM)"].encode(), password=None
-    )
-    secret = (
-        a.exchange(ec.ECDH(), b.public_key())
-        if exchange == "ECDHE P-256"
-        else a.exchange(b.public_key())
-    )
-    assert (
-        secret.hex()
-        == shared["outputs"]["Bí mật chung của A (hex)"]
-        == shared["outputs"]["Bí mật chung của B (hex)"]
-    )
-    assert (
-        shared["inputs"]["Khóa riêng tạm thời của A (PEM)"]
-        == signed["outputs"]["Khóa riêng tạm thời của A (PEM)"]
-    )
-
-
-def test_cli_private_json_has_restricted_permissions(tmp_path):
-    import subprocess, sys
-
-    output = tmp_path / "secret.json"
-    output.write_text("old", encoding="utf-8")
-    output.chmod(0o644)
-    subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "ssl_tls_lab",
-            "message",
-            "--text",
-            "A → B",
-            "--output",
-            str(output),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    assert output.stat().st_mode & 0o777 == 0o600
-    prepared = json.loads(output.read_text(encoding="utf-8"))["steps"][0]["outputs"]
-    assert_key_matches_certificate(
-        prepared["Khóa riêng chứng chỉ server (PEM)"],
-        prepared["Chứng chỉ server (PEM)"],
-    )
-
-
-@pytest.mark.parametrize("mode", ["real", "model"])
-def test_step_explanations_cover_all_inputs_and_outputs(mode):
-    from ssl_tls_lab.protocols import run_protocol
-
-    result = run_protocol("A → B", DemoConfig(exchange="ECDHE P-256"), mode=mode)
-    for step in result["steps"]:
-        assert "A là client" in step["context"]["roles"]
-        for section in ("inputs", "outputs"):
-            assert set(step["explanations"][section]) == set(step[section])
-            for explanation in step["explanations"][section].values():
-                assert all(
-                    explanation[field] for field in ("location", "origin", "purpose")
-                )
-    prepared = result["steps"][0]["explanations"]["outputs"][
-        "Khóa riêng chứng chỉ server (PEM)"
-    ]
-    assert "B (server)" in prepared["location"]
-    assert "không" in prepared["location"].lower()
-    if mode == "real":
-        handshake = next(
-            s for s in result["steps"] if s["title"] == "Handshake TLS hoàn tất"
-        )
-        assert (
-            "không trích xuất"
-            in handshake["explanations"]["outputs"]["Khóa riêng DH/ECDHE tạm thời"][
-                "origin"
-            ]
-        )
-    else:
-        signed = next(s for s in result["steps"] if s["title"] == "B ký khóa tạm thời")
-        assert (
-            "sinh mới"
-            in signed["explanations"]["outputs"]["Khóa riêng tạm thời của A (PEM)"][
-                "origin"
-            ].lower()
-        )

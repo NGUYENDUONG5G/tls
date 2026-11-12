@@ -529,6 +529,21 @@ h2 {
   line-height: 1.6;
   margin: 8px 0 17px;
 }
+.formula {
+  margin: -6px 0 17px;
+  padding: 11px 13px;
+  border-left: 3px solid var(--blue);
+  border-radius: 7px;
+  background: #f3f6fe;
+  color: #2c3f63;
+  font:
+    11px/1.65 ui-monospace,
+    SFMono-Regular,
+    Consolas,
+    monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .data-row {
   border-top: 1px solid #f0f3f7;
   padding: 12px 0;

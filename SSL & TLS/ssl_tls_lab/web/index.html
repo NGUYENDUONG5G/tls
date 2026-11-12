@@ -21,12 +21,6 @@
           Chọn các thành phần mật mã trước khi gửi thông điệp.
         </p>
         <label
-          >Chế độ<select id="mode">
-            <option value="real">Kết nối thực</option>
-            <option value="model">Mô hình từng bước</option>
-          </select></label
-        >
-        <label
           >Phiên bản<select id="version">
             <option>SSL 1.0</option>
             <option>SSL 2.0</option>
@@ -68,10 +62,10 @@
           </select></label
         >
         <div class="side-note">
-          <b id="mode-title">✳ Kết nối thực</b>
+          <b id="mode-title">✳ Mô hình từng bước</b>
           <p id="mode-description">
-            Quan sát handshake, dữ liệu và kết quả được thư viện SSL/TLS thực xử
-            lý.
+            Từng thông điệp handshake theo The Illustrated TLS Connection, tính
+            với khóa mới ở mỗi lần chạy.
           </p>
         </div>
       </aside>
@@ -94,7 +88,7 @@
             <textarea id="message" rows="2" placeholder="Nhập thông điệp...">
 Xin chào B, đây là thông điệp bí mật từ A!</textarea
             ><button id="run" class="primary">
-              Chạy kết nối thực <span>→</span>
+              Chạy từng bước <span>→</span>
             </button>
           </div>
           <div class="compose-footer">
@@ -113,7 +107,7 @@ Xin chào B, đây là thông điệp bí mật từ A!</textarea
             <span id="result-badge" class="badge pending">CHƯA CHẠY</span>
           </div>
           <p id="run-summary" class="run-summary">
-            Kết quả thực tế sẽ xuất hiện sau khi kết nối.
+            Kết quả sẽ xuất hiện sau khi chạy.
           </p>
           <div class="flow">
             <div class="endpoint"><span>A</span><b>Người gửi</b></div>
@@ -147,11 +141,11 @@ Xin chào B, đây là thông điệp bí mật từ A!</textarea
           </article>
           <article>
             <span>TRUYỀN TCP</span><b>— <small>ms</small></b
-            ><em>bao gồm tạo socket</em>
+            ><em>record dữ liệu</em>
           </article>
           <article>
             <span>DỮ LIỆU TRUYỀN</span><b>— <small>byte</small></b
-            ><em>khung minh họa</em>
+            ><em>record dữ liệu</em>
           </article>
         </section>
         <p id="metrics-more" class="metrics-more"></p>

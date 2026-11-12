@@ -1,22 +1,16 @@
-"""Observable cryptographic message exchange for teaching; not a TLS stack."""
+"""Step-by-step TLS 1.2/1.3 model following the Illustrated TLS walkthroughs."""
 
 from __future__ import annotations
 
 import hashlib
-import hmac
-import os
 import socket
-import struct
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 
 from cryptography import x509
-from cryptography.exceptions import InvalidSignature, InvalidTag
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa, x25519
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 from cryptography.x509.oid import NameOID
 
 
@@ -95,14 +89,7 @@ class DemoConfig:
             )
 
 
-def p_hash(secret: bytes, seed: bytes, length: int, digest) -> bytes:
-    """TLS 1.2 P_hash: HMAC(secret,A(i)||seed), A(1)=HMAC(secret,seed)."""
-    result = b""
-    a = seed
-    while len(result) < length:
-        a = hmac.new(secret, a, digest).digest()
-        result += hmac.new(secret, a + seed, digest).digest()
-    return result[:length]
+HOSTNAME = "B.local"
 
 
 def _read_exact(sock, length):
@@ -116,37 +103,116 @@ def _read_exact(sock, length):
     return b"".join(chunks)
 
 
-def run_message(message: str, config: DemoConfig, tamper: bool = False) -> dict:
-    config.validate()
-    if config.version not in ("TLS 1.2", "TLS 1.3"):
-        raise ValueError(
-            "Mô hình từng bước chỉ hỗ trợ TLS 1.2/1.3; chọn chế độ kết nối thực cho phiên bản cũ."
-        )
-    plaintext = message.encode("utf-8")
-    if not plaintext or len(plaintext) > 32768:
-        raise ValueError("Nhập thông điệp từ 1 đến 32768 byte UTF-8.")
-    start = time.perf_counter_ns()
-    cpu_start = time.process_time_ns()
-    steps = []
+class Loopback:
+    """TCP loopback connection carrying every record between A and B."""
 
-    def step(actor, title, started, details):
-        finished = time.perf_counter_ns()
-        steps.append(
-            {
-                "index": len(steps) + 1,
-                "actor": actor,
-                "title": title,
-                "duration_ms": (finished - started) / 1_000_000,
-                "offset_ms": (finished - start) / 1_000_000,
-                "details": details,
-            }
-        )
+    def __enter__(self):
+        self.listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.listener.settimeout(5)
+        self.listener.bind(("127.0.0.1", 0))
+        self.listener.listen(1)
+        self.a = socket.create_connection(self.listener.getsockname(), timeout=5)
+        self.b = self.listener.accept()[0]
+        self.b.settimeout(5)
+        self.total_bytes = 0
+        return self
 
-    hash_alg = hashes.SHA256() if config.hash_name == "SHA-256" else hashes.SHA384()
-    digest = hashlib.sha256 if config.hash_name == "SHA-256" else hashlib.sha384
-    key_bytes = 16 if config.cipher == "AES-128-GCM" else 32
+    def __exit__(self, *exc):
+        for sock in (self.a, self.b, self.listener):
+            sock.close()
 
-    t = time.perf_counter_ns()
+    def send(self, sender: str, data: bytes) -> bytes:
+        """Send from "A" or "B"; return the bytes the other side received."""
+        source, target = (self.a, self.b) if sender == "A" else (self.b, self.a)
+        source.sendall(data)
+        self.total_bytes += len(data)
+        return _read_exact(target, len(data))
+
+
+class Recorder:
+    """Collect the steps shown in the interface, timing each one."""
+
+    def __init__(self, texts: dict, values: dict):
+        self.texts, self.values = texts, values
+        self.start = self.mark = time.perf_counter_ns()
+        self.steps = []
+
+    def add(self, key: str, actor: str, inputs: dict, outputs: dict):
+        title, description, formula = self.texts[key]
+        now = time.perf_counter_ns()
+        step = {
+            "index": len(self.steps) + 1,
+            "key": key,
+            "actor": actor,
+            "title": title,
+            "duration_ms": (now - self.mark) / 1_000_000,
+            "offset_ms": (now - self.start) / 1_000_000,
+            "description": description.format(**self.values),
+            "inputs": inputs,
+            "outputs": outputs,
+        }
+        if formula:
+            step["formula"] = formula.format(**self.values)
+        self.steps.append(step)
+        self.mark = time.perf_counter_ns()
+
+
+@dataclass
+class Session:
+    config: DemoConfig
+    plaintext: bytes
+    tamper: bool
+    rec: Recorder
+    wire: Loopback
+    server_key: object
+    cert_der: bytes
+    ca_cert: x509.Certificate
+    digest: object
+    key_len: int
+
+
+def _padding(pss: bool):
+    if pss:
+        return padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=32)
+    return padding.PKCS1v15()
+
+
+def sign(key, data: bytes, pss: bool) -> bytes:
+    """Sign with the certificate key: RSA (PSS or PKCS#1 v1.5) or ECDSA, SHA-256."""
+    if isinstance(key, rsa.RSAPrivateKey):
+        return key.sign(data, _padding(pss), hashes.SHA256())
+    return key.sign(data, ec.ECDSA(hashes.SHA256()))
+
+
+def verify(public_key, signature: bytes, data: bytes, pss: bool) -> None:
+    """Raise InvalidSignature unless `signature` covers `data`."""
+    if isinstance(public_key, rsa.RSAPublicKey):
+        public_key.verify(signature, data, _padding(pss), hashes.SHA256())
+    else:
+        public_key.verify(signature, data, ec.ECDSA(hashes.SHA256()))
+
+
+def check_certificate(cert_der: bytes, ca_cert: x509.Certificate) -> x509.Certificate:
+    """Checks A makes on the certificate received from B: CA signature, name, validity."""
+    cert = x509.load_der_x509_certificate(cert_der)
+    ca_cert.public_key().verify(
+        cert.signature,
+        cert.tbs_certificate_bytes,
+        padding.PKCS1v15(),
+        cert.signature_hash_algorithm,
+    )
+    names = cert.extensions.get_extension_for_class(
+        x509.SubjectAlternativeName
+    ).value.get_values_for_type(x509.DNSName)
+    if cert.issuer != ca_cert.subject or HOSTNAME not in names:
+        raise ValueError("Tên hoặc CA của chứng chỉ không hợp lệ")
+    now = datetime.now(timezone.utc)
+    if not cert.not_valid_before_utc <= now <= cert.not_valid_after_utc:
+        raise ValueError("Chứng chỉ ngoài thời hạn")
+    return cert
+
+
+def _make_certificates(config: DemoConfig, hash_alg):
     ca_key = rsa.generate_private_key(public_exponent=65537, key_size=config.rsa_bits)
     server_key = (
         rsa.generate_private_key(public_exponent=65537, key_size=config.rsa_bits)
@@ -155,385 +221,146 @@ def run_message(message: str, config: DemoConfig, tamper: bool = False) -> dict:
     )
     now = datetime.now(timezone.utc)
     ca_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "CA Minh hoa TLS")])
-    server_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "B.local")])
+
+    def builder(subject, key):
+        return (
+            x509.CertificateBuilder()
+            .subject_name(subject)
+            .issuer_name(ca_name)
+            .public_key(key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now - timedelta(minutes=1))
+            .not_valid_after(now + timedelta(days=1))
+        )
+
     ca_cert = (
-        x509.CertificateBuilder()
-        .subject_name(ca_name)
-        .issuer_name(ca_name)
-        .public_key(ca_key.public_key())
-        .serial_number(x509.random_serial_number())
-        .not_valid_before(now - timedelta(minutes=1))
-        .not_valid_after(now + timedelta(days=1))
+        builder(ca_name, ca_key)
         .add_extension(x509.BasicConstraints(ca=True, path_length=None), True)
         .sign(ca_key, hash_alg)
     )
+    server_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, HOSTNAME)])
     cert = (
-        x509.CertificateBuilder()
-        .subject_name(server_name)
-        .issuer_name(ca_name)
-        .public_key(server_key.public_key())
-        .serial_number(x509.random_serial_number())
-        .not_valid_before(now - timedelta(minutes=1))
-        .not_valid_after(now + timedelta(days=1))
-        .add_extension(x509.SubjectAlternativeName([x509.DNSName("B.local")]), False)
+        builder(server_name, server_key)
+        .add_extension(x509.SubjectAlternativeName([x509.DNSName(HOSTNAME)]), False)
         .sign(ca_key, hash_alg)
     )
+    return ca_key, ca_cert, server_key, cert
+
+
+def run_message(message: str, config: DemoConfig, tamper: bool = False) -> dict:
+    config.validate()
+    if config.version not in ("TLS 1.2", "TLS 1.3"):
+        raise ValueError("Mô hình từng bước chỉ hỗ trợ TLS 1.2/1.3.")
+    plaintext = message.encode("utf-8")
+    if not plaintext or len(plaintext) > 32768:
+        raise ValueError("Nhập thông điệp từ 1 đến 32768 byte UTF-8.")
+    from . import illustrated_text, model_tls12, model_tls13
+
+    model, texts = (
+        (model_tls13, illustrated_text.TLS13)
+        if config.version == "TLS 1.3"
+        else (model_tls12, illustrated_text.TLS12)
+    )
+    sha384 = config.hash_name == "SHA-384"
+    digest = hashlib.sha384 if sha384 else hashlib.sha256
+    key_len = 16 if config.cipher == "AES-128-GCM" else 32
+    cpu_start = time.process_time_ns()
+    rec = Recorder(
+        texts,
+        {
+            "H": "SHA384" if sha384 else "SHA256",
+            "hl": digest().digest_size,
+            "kl": key_len,
+            "host": HOSTNAME,
+        },
+    )
+
+    ca_key, ca_cert, server_key, cert = _make_certificates(
+        config, hashes.SHA384() if sha384 else hashes.SHA256()
+    )
     cert_der = cert.public_bytes(serialization.Encoding.DER)
-    private_format = lambda key: key.private_bytes(
-        serialization.Encoding.PEM,
-        serialization.PrivateFormat.PKCS8,
-        serialization.NoEncryption(),
-    ).decode()
-    step(
+
+    def pem(certificate):
+        return certificate.public_bytes(serialization.Encoding.PEM).decode()
+
+    def private_pem(key):
+        return key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ).decode()
+
+    rec.add(
+        "prepare",
         "B / CA",
-        "Tạo khóa và chứng chỉ thử nghiệm",
-        t,
         {
-            "authentication": config.authentication,
-            "certificate_key_bits": server_key.key_size,
-            "rsa_ca_bits": config.rsa_bits,
-            "certificate_bytes": len(cert_der),
-            "subject": "B.local",
-            "certificate_sha256": hashlib.sha256(cert_der).hexdigest(),
-            "certificate_pem": cert.public_bytes(serialization.Encoding.PEM).decode(),
-            "ca_certificate_pem": ca_cert.public_bytes(
-                serialization.Encoding.PEM
-            ).decode(),
-            "server_public_key_pem": server_key.public_key()
-            .public_bytes(
-                serialization.Encoding.PEM,
-                serialization.PublicFormat.SubjectPublicKeyInfo,
-            )
-            .decode(),
-            "server_private_key_pem": private_format(server_key),
-            "ca_private_key_pem": private_format(ca_key),
-            "note": "CA RSA ký chứng chỉ server được tạo cho lần minh họa này.",
+            "Phiên bản": config.version,
+            "Trao đổi khóa": config.exchange,
+            "Xác thực server": config.authentication,
+            "Mã hóa": f"{config.cipher} / {config.hash_name}",
+            "Khóa RSA của CA (bit)": config.rsa_bits,
+        },
+        {
+            "Chứng chỉ server (PEM)": pem(cert),
+            "Khóa riêng chứng chỉ server (PEM)": private_pem(server_key),
+            "Chứng chỉ CA tin cậy (PEM)": pem(ca_cert),
+            "Khóa riêng CA thử nghiệm (PEM)": private_pem(ca_key),
+            "Độ dài chứng chỉ (byte)": len(cert_der),
         },
     )
 
-    t = time.perf_counter_ns()
-    ca_cert.public_key().verify(
-        cert.signature,
-        cert.tbs_certificate_bytes,
-        padding.PKCS1v15(),
-        cert.signature_hash_algorithm,
-    )
-    if (
-        cert.issuer != ca_cert.subject
-        or "B.local"
-        not in cert.extensions.get_extension_for_class(
-            x509.SubjectAlternativeName
-        ).value.get_values_for_type(x509.DNSName)
-    ):
-        raise ValueError("Tên hoặc CA của chứng chỉ không hợp lệ")
-    if not cert.not_valid_before_utc <= now <= cert.not_valid_after_utc:
-        raise ValueError("Chứng chỉ ngoài thời hạn")
-    step(
-        "A",
-        "Kiểm tra chứng chỉ của B",
-        t,
-        {
-            "signature": "hợp lệ",
-            "issuer": "CA Minh hoa TLS",
-            "hostname": "B.local",
-            "validity": "hợp lệ",
-            "note": "Kiểm tra minh họa: chữ ký CA, issuer, SAN và thời hạn; chưa xây dựng chuỗi tổng quát hoặc kiểm tra thu hồi.",
-        },
-    )
-
-    client_random, server_random = os.urandom(32), os.urandom(32)
-    if config.exchange == "RSA key transport":
-        t = time.perf_counter_ns()
-        secret_a = b"\x03\x03" + os.urandom(46)
-        encrypted_secret = cert.public_key().encrypt(secret_a, padding.PKCS1v15())
-        step(
-            "A → B",
-            "RSA mã hóa bí mật tiền chủ",
-            t,
-            {
-                "client_random": client_random.hex(),
-                "server_random": server_random.hex(),
-                "premaster_secret": secret_a.hex(),
-                "rsa_ciphertext": encrypted_secret.hex(),
-                "rsa_ciphertext_bytes": len(encrypted_secret),
-            },
-        )
-        t = time.perf_counter_ns()
-        secret_b = server_key.decrypt(encrypted_secret, padding.PKCS1v15())
-        step(
-            "B",
-            "RSA giải mã bí mật tiền chủ",
-            t,
-            {"premaster_secret": secret_b.hex(), "matches_A": secret_a == secret_b},
-        )
-    else:
-        t = time.perf_counter_ns()
-        if config.exchange == "ECDHE X25519":
-            a_key, b_key = (
-                x25519.X25519PrivateKey.generate(),
-                x25519.X25519PrivateKey.generate(),
-            )
-            a_public = a_key.public_key().public_bytes(
-                serialization.Encoding.Raw, serialization.PublicFormat.Raw
-            )
-            b_public = b_key.public_key().public_bytes(
-                serialization.Encoding.Raw, serialization.PublicFormat.Raw
-            )
-            public_a = x25519.X25519PublicKey.from_public_bytes(a_public)
-            public_b = x25519.X25519PublicKey.from_public_bytes(b_public)
-        elif config.exchange == "ECDHE P-256":
-            a_key, b_key = (
-                ec.generate_private_key(ec.SECP256R1()),
-                ec.generate_private_key(ec.SECP256R1()),
-            )
-            a_public = a_key.public_key().public_bytes(
-                serialization.Encoding.X962,
-                serialization.PublicFormat.UncompressedPoint,
-            )
-            b_public = b_key.public_key().public_bytes(
-                serialization.Encoding.X962,
-                serialization.PublicFormat.UncompressedPoint,
-            )
-            public_a = ec.EllipticCurvePublicKey.from_encoded_point(
-                ec.SECP256R1(), a_public
-            )
-            public_b = ec.EllipticCurvePublicKey.from_encoded_point(
-                ec.SECP256R1(), b_public
-            )
-        else:
-            from .dh_group import parameters, ffdhe_parameters
-
-            group = (
-                ffdhe_parameters()
-                if config.exchange == "DHE ffdhe2048"
-                else parameters()
-            )
-            a_key, b_key = group.generate_private_key(), group.generate_private_key()
-            a_public = a_key.public_key().public_bytes(
-                serialization.Encoding.DER,
-                serialization.PublicFormat.SubjectPublicKeyInfo,
-            )
-            b_public = b_key.public_key().public_bytes(
-                serialization.Encoding.DER,
-                serialization.PublicFormat.SubjectPublicKeyInfo,
-            )
-            public_a = serialization.load_der_public_key(a_public)
-            public_b = serialization.load_der_public_key(b_public)
-        signed = client_random + server_random + b_public
-        sig_hash = hash_alg if config.authentication == "RSA" else hashes.SHA256()
-        if config.authentication == "RSA":
-            signature = server_key.sign(
-                signed,
-                padding.PSS(
-                    mgf=padding.MGF1(sig_hash), salt_length=sig_hash.digest_size
-                ),
-                sig_hash,
-            )
-        else:
-            signature = server_key.sign(signed, ec.ECDSA(sig_hash))
-        step(
-            "B → A",
-            "B ký khóa tạm thời",
-            t,
-            {
-                "exchange": config.exchange,
-                "authentication": config.authentication,
-                "client_random": client_random.hex(),
-                "server_random": server_random.hex(),
-                "A_public_key": a_public.hex(),
-                "B_public_key": b_public.hex(),
-                "A_ephemeral_private_key_pem": private_format(a_key),
-                "B_ephemeral_private_key_pem": private_format(b_key),
-                "signed_data": signed.hex(),
-                "signature": signature.hex(),
-                "signature_bytes": len(signature),
-                "signature_hash": sig_hash.name,
-            },
-        )
-        t = time.perf_counter_ns()
-        if config.authentication == "RSA":
-            cert.public_key().verify(
-                signature,
-                signed,
-                padding.PSS(
-                    mgf=padding.MGF1(sig_hash), salt_length=sig_hash.digest_size
-                ),
-                sig_hash,
-            )
-        else:
-            cert.public_key().verify(signature, signed, ec.ECDSA(sig_hash))
-        if config.exchange == "ECDHE P-256":
-            secret_a = a_key.exchange(ec.ECDH(), public_b)
-            secret_b = b_key.exchange(ec.ECDH(), public_a)
-        else:
-            secret_a = a_key.exchange(public_b)
-            secret_b = b_key.exchange(public_a)
-        step(
-            "A ↔ B",
-            "Kiểm tra chữ ký và tính bí mật chung",
-            t,
-            {
-                "signature": "hợp lệ",
-                "exchange": config.exchange,
-                "A_shared_secret": secret_a.hex(),
-                "B_shared_secret": secret_b.hex(),
-                "matches": secret_a == secret_b,
-            },
-        )
-    if not hmac.compare_digest(secret_a, secret_b):
-        raise ValueError("Bí mật của A và B không khớp")
-
-    def derive(secret):
-        if config.version == "TLS 1.2":
-            master = p_hash(
-                secret, b"master secret" + client_random + server_random, 48, digest
-            )
-            material = p_hash(
-                master,
-                b"key expansion" + server_random + client_random,
-                2 * key_bytes + 8,
+    with Loopback() as wire:
+        outcome = model.run(
+            Session(
+                config,
+                plaintext,
+                tamper,
+                rec,
+                wire,
+                server_key,
+                cert_der,
+                ca_cert,
                 digest,
+                key_len,
             )
-            return (
-                master,
-                material[:key_bytes],
-                "TLS 1.2 PRF P_hash (không dùng extended master secret)",
-            )
-        salt = digest(client_random + server_random).digest()
-        material = HKDF(
-            algorithm=hash_alg,
-            length=key_bytes,
-            salt=salt,
-            info=b"educational tls13-like A->B key",
-        ).derive(secret)
-        return None, material, "HKDF minh họa; không phải TLS 1.3 key schedule"
-
-    t = time.perf_counter_ns()
-    master_a, key_a, kdf_name = derive(secret_a)
-    master_b, key_b, _ = derive(secret_b)
-    step(
-        "A ↔ B",
-        "Dẫn xuất khóa phiên độc lập",
-        t,
-        {
-            "algorithm": kdf_name,
-            "hash": config.hash_name,
-            "master_secret_A": master_a.hex() if master_a else None,
-            "master_secret_B": master_b.hex() if master_b else None,
-            "A_to_B_key_A": key_a.hex(),
-            "A_to_B_key_B": key_b.hex(),
-            "keys_match": hmac.compare_digest(key_a, key_b),
-        },
-    )
-
-    t = time.perf_counter_ns()
-    nonce = os.urandom(12)
-    aad = f"DEMO|{config.version}|{config.exchange}|{config.authentication}|{config.cipher}|{config.hash_name}".encode()
-    encrypted = AESGCM(key_a).encrypt(nonce, plaintext, aad)
-    ciphertext, tag = encrypted[:-16], encrypted[-16:]
-    step(
-        "A",
-        "AES-GCM mã hóa và tạo tag",
-        t,
-        {
-            "plaintext_utf8": message,
-            "plaintext_hex": plaintext.hex(),
-            "nonce": nonce.hex(),
-            "aad_utf8": aad.decode(),
-            "ciphertext_hex": ciphertext.hex(),
-            "tag_hex": tag.hex(),
-            "plaintext_bytes": len(plaintext),
-            "ciphertext_bytes": len(ciphertext),
-            "tag_bytes": len(tag),
-        },
-    )
-
-    t = time.perf_counter_ns()
-    packet = nonce + encrypted
-    if tamper:
-        packet = packet[:-1] + bytes([packet[-1] ^ 1])
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
-        listener.settimeout(5)
-        listener.bind(("127.0.0.1", 0))
-        listener.listen(1)
-        with socket.create_connection(listener.getsockname(), timeout=5) as a:
-            with listener.accept()[0] as b:
-                b.settimeout(5)
-                framed = struct.pack("!I", len(packet)) + packet
-                a.sendall(framed)
-                size = struct.unpack("!I", _read_exact(b, 4))[0]
-                received = _read_exact(b, size)
-    step(
-        "A → B",
-        "Truyền bản mã qua TCP loopback",
-        t,
-        {
-            "address": "127.0.0.1",
-            "frame_hex": framed.hex(),
-            "frame_bytes": len(framed),
-            "length_prefix_bytes": 4,
-            "nonce_bytes": 12,
-            "ciphertext_bytes": len(ciphertext),
-            "tag_bytes": 16,
-            "tampered": tamper,
-            "note": "Khung demo tự định nghĩa; không phải TLS record. Đo gồm tạo socket và truyền loopback.",
-        },
-    )
-    t = time.perf_counter_ns()
-    try:
-        decrypted = AESGCM(key_b).decrypt(received[:12], received[12:], aad)
-        status = "success"
-        output = decrypted.decode("utf-8")
-        details = {
-            "tag": "hợp lệ",
-            "plaintext_utf8": output,
-            "plaintext_hex": decrypted.hex(),
-            "matches_original": decrypted == plaintext,
-        }
-    except InvalidTag:
-        status, output = "rejected", None
-        details = {
-            "tag": "không hợp lệ",
-            "plaintext_utf8": None,
-            "result": "B từ chối bản ghi; không trả bản rõ.",
-        }
-    step("B", "Kiểm tra tag và giải mã", t, details)
-    elapsed = (time.perf_counter_ns() - start) / 1_000_000
-    cpu_ms = (time.process_time_ns() - cpu_start) / 1_000_000
-    by_title = {s["title"]: s["duration_ms"] for s in steps}
+        )
+    steps = rec.steps
+    elapsed = (time.perf_counter_ns() - rec.start) / 1_000_000
+    setup = steps[: outcome["handshake_steps"]]
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "model": "Minh họa lấy cảm hứng TLS; không tương thích giao thức TLS thật",
+        "model": f"Mô hình {config.version} theo The Illustrated TLS Connection",
+        "negotiated": " / ".join(
+            (config.version, outcome["suite"], config.exchange, config.authentication)
+        ),
         "config": asdict(config),
-        "status": status,
+        "status": outcome["status"],
         "tampered": tamper,
         "input": message,
-        "output": output,
+        "output": outcome["output"],
         "steps": steps,
         "metrics": {
             "total_ms": elapsed,
-            "process_cpu_ms": cpu_ms,
-            "setup_ms": sum(s["duration_ms"] for s in steps[:5]),
-            "encrypt_ms": by_title["AES-GCM mã hóa và tạo tag"],
-            "tcp_loopback_ms": by_title["Truyền bản mã qua TCP loopback"],
-            "tcp_frame_mib_s": len(framed)
-            / (1024**2)
-            / (by_title["Truyền bản mã qua TCP loopback"] / 1000),
-            "decrypt_verify_ms": by_title["Kiểm tra tag và giải mã"],
+            "process_cpu_ms": (time.process_time_ns() - cpu_start) / 1_000_000,
+            "setup_ms": sum(s["duration_ms"] for s in setup),
+            "handshake_ms": sum(s["duration_ms"] for s in setup[1:]),
+            "handshake_bytes": outcome["handshake_bytes"],
+            "encrypt_ms": outcome["encrypt_ms"],
+            "tcp_loopback_ms": outcome["transfer_ms"],
+            "decrypt_verify_ms": outcome["decrypt_ms"],
             "plaintext_bytes": len(plaintext),
-            "ciphertext_bytes": len(ciphertext),
+            "frame_bytes": outcome["record_bytes"],
+            "wire_overhead_bytes": outcome["record_bytes"] - len(plaintext),
             "tag_bytes": 16,
-            "nonce_bytes": 12,
-            "frame_bytes": len(framed),
-            "wire_overhead_bytes": len(framed) - len(plaintext),
             "certificate_bytes": len(cert_der),
         },
         "limitations": [
-            "Các bước handshake được mô phỏng trong một tiến trình; chỉ bản mã được truyền qua TCP loopback.",
-            "Khung dữ liệu không tương thích TLS; đây không phải triển khai hay phép đo TLS thực.",
-            "TLS 1.3 dùng HKDF minh họa, không triển khai đầy đủ TLS 1.3 key schedule/Finished.",
-            "CPU là tổng CPU của tiến trình A và B, gồm cả các luồng khác; tốc độ khung dựa trên một lần gồm tạo socket, không đại diện thông lượng mạng.",
-            "Log hiển thị bí mật và khóa phiên cho mục đích học tập; không dùng cho dữ liệu thật.",
+            "A và B chạy trong cùng một tiến trình; mọi record đi qua TCP loopback.",
+            "Thông điệp có định dạng TLS nhưng mô hình chỉ hỗ trợ một tập cấu hình và không xử lý alert, resumption hay phân mảnh handshake; không dùng thay cho thư viện TLS.",
+            "Bỏ các bước New Session Ticket, phản hồi của server và close_notify có trong tài liệu gốc.",
+            "TLS 1.2 không dùng extended master secret, giống tài liệu gốc.",
+            "Log hiển thị khóa riêng, bí mật và khóa phiên cho mục đích học tập; không dùng cho dữ liệu thật.",
+            "Thời gian đo một lần ở mức ứng dụng; không phải benchmark.",
         ],
     }

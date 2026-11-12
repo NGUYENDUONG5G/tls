@@ -135,7 +135,7 @@ def run_legacy_tls(message: str, config: DemoConfig, tamper: bool = False) -> di
         )
     group = None
     if config.exchange != "RSA key transport":
-        from .real_tls import negotiated_group
+        from .tls_wire import negotiated_group
 
         group = negotiated_group(
             [

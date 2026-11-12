@@ -26,7 +26,7 @@ DEFAULTS = {
 
 def parser():
     main = argparse.ArgumentParser(
-        description="Minh họa một thông điệp A → B qua SSL/TLS"
+        description="Minh họa từng bước một thông điệp A → B qua SSL/TLS"
     )
     commands = main.add_subparsers(dest="command", required=True)
     gui = commands.add_parser("gui", help="Mở giao diện trình duyệt tại máy cục bộ")
@@ -39,7 +39,6 @@ def parser():
         "message", help="Chạy một thông điệp và xuất log JSON"
     )
     message.add_argument("--text", required=True)
-    message.add_argument("--mode", choices=("real", "model"), default="real")
     message.add_argument("--version", choices=VERSIONS, default="TLS 1.2")
     message.add_argument(
         "--exchange",
@@ -104,7 +103,9 @@ def main(argv=None):
                     + (
                         "lịch sử; chưa có triển khai công khai được xác minh"
                         if version == "SSL 1.0"
-                        else "kết nối thực"
+                        else "mô hình từng bước"
+                        if version in ("TLS 1.2", "TLS 1.3")
+                        else "OpenSSL 1.0.2u trong container"
                     )
                 )
         elif args.command == "lab-build":
@@ -150,13 +151,14 @@ def main(argv=None):
                 args.hash or hash_name,
                 args.rsa_bits,
             )
-            result = run_protocol(args.text, config, args.tamper, args.mode)
+            result = run_protocol(args.text, config, args.tamper)
             text = json.dumps(result, ensure_ascii=False, indent=2)
             if args.output:
                 args.output.parent.mkdir(parents=True, exist_ok=True)
                 fd = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
                 with os.fdopen(fd, "w", encoding="utf-8") as output:
-                    os.fchmod(output.fileno(), 0o600)
+                    if hasattr(os, "fchmod"):  # not on Windows before 3.13
+                        os.fchmod(output.fileno(), 0o600)
                     output.write(text + "\n")
                 print(args.output)
             else:

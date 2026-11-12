@@ -1,23 +1,10 @@
-"""Educational provenance of values actually recorded by the lab."""
+"""Provenance of values recorded by the legacy (SSL 2.0–TLS 1.1) backend."""
 
 
 def explain_steps(result):
-    mode = result["mode"]
-    legacy = result["config"]["version"] in ("SSL 2.0", "SSL 3.0", "TLS 1.0", "TLS 1.1")
-    roles = (
-        "A là server gửi nội dung HTTP; B là client xác minh server."
-        if legacy
-        else "A là client gửi thông điệp; B là server nhận thông điệp."
-    )
-    if legacy:
-        storage = "Server A tạo khóa và chứng chỉ trong thư mục tạm của container; thư mục bị xóa sau khi chạy. Bản sao được đưa vào kết quả/log."
-        server = "A (server)"
-    elif mode == "real":
-        storage = "Khóa server B được tạo trong bộ nhớ, ghi tạm vào server.key để OpenSSL nạp, sau đó thư mục tạm bị xóa. Bản sao nằm trong kết quả/log."
-        server = "B (server)"
-    else:
-        storage = "Khóa được tạo và dùng trong bộ nhớ tiến trình mô hình; bản sao nằm trong kết quả/log."
-        server = "B (server)"
+    roles = "A là server gửi nội dung HTTP; B là client xác minh server."
+    storage = "Server A tạo khóa và chứng chỉ trong thư mục tạm của container; thư mục bị xóa sau khi chạy. Bản sao được đưa vào kết quả/log."
+    server = "A (server)"
 
     def explain(key, value, title):
         where = "Trong kết quả của bước hiện tại."
@@ -44,17 +31,10 @@ def explain_steps(result):
                 "purpose": "Khóa của chứng chỉ: dùng để ký xác thực hoặc giải mã bí mật tiền chủ RSA tùy cấu hình; khác khóa phiên và khóa DH/ECDHE tạm thời.",
             }
         if "Khóa riêng" in key and ("tạm thời" in key or "DH/ECDHE" in key):
-            if mode == "real":
-                return {
-                    "location": "Bên trong OpenSSL ở hai đầu kết nối; không có giá trị khóa trong log.",
-                    "origin": "OpenSSL sinh trong handshake; backend hiện tại không trích xuất giá trị này.",
-                    "purpose": "Kết hợp với khóa công khai của đầu kia để tính bí mật chung; không được gửi qua mạng.",
-                }
-            owner = "A" if "của A" in key else "B"
             return {
-                "location": f"Trong bộ nhớ phía {owner} của mô hình; bản sao trong kết quả/log, không được gửi qua mạng.",
-                "origin": "Sinh mới bằng bộ sinh khóa DH/ECDHE của thư viện cryptography và nguồn ngẫu nhiên hệ điều hành.",
-                "purpose": "Kết hợp với khóa công khai tạm thời của phía còn lại để tính bí mật chung.",
+                "location": "Bên trong OpenSSL ở hai đầu kết nối; không có giá trị khóa trong log.",
+                "origin": "OpenSSL sinh trong handshake; backend hiện tại không trích xuất giá trị này.",
+                "purpose": "Kết hợp với khóa công khai của đầu kia để tính bí mật chung; không được gửi qua mạng.",
             }
         if "Khóa công khai tạm thời" in key:
             owner = "A" if "của A" in key else "B"
@@ -70,22 +50,14 @@ def explain_steps(result):
                 "purpose": "Xác minh chữ ký server, hoặc mã hóa bí mật tiền chủ khi dùng RSA key transport.",
             }
         if "Chứng chỉ CA" in key or "Chứng chỉ được tin cậy" in key:
-            origin = (
-                "Chứng chỉ server tự ký trong container được dùng làm chứng chỉ tin cậy cho client."
-                if legacy
-                else "CA thử nghiệm tự ký chứng chỉ CA; client được cấu hình tin cậy chứng chỉ này."
-            )
+            origin = "Chứng chỉ server tự ký trong container được dùng làm chứng chỉ tin cậy cho client."
             return {
                 "location": "Kho tin cậy của client trong lần chạy; bản sao trong kết quả/log.",
                 "origin": origin,
                 "purpose": "Làm điểm tin cậy để kiểm tra chứng chỉ server.",
             }
         if "Chứng chỉ server" in key:
-            origin = (
-                "OpenSSL tạo chứng chỉ tự ký cho server trong container."
-                if legacy
-                else "Chương trình tạo chứng chỉ X.509 chứa khóa công khai server và ký bằng khóa riêng CA thử nghiệm."
-            )
+            origin = "OpenSSL tạo chứng chỉ tự ký cho server trong container."
             return {
                 "location": f"{server} giữ chứng chỉ; client nhận và kiểm tra; bản sao trong log.",
                 "origin": origin,
@@ -128,7 +100,7 @@ def explain_steps(result):
                 "origin": "TLS 1.2 mô hình dùng PRF với bí mật đầu vào, nhãn master secret và client/server random.",
                 "purpose": "Đầu vào cho PRF key expansion; TLS 1.3 mô hình không xuất trường này.",
             }
-        if "Khóa phiên" in key and mode == "real":
+        if "Khóa phiên" in key:
             return {
                 "location": "Trong trạng thái kết nối của OpenSSL; không có giá trị trong log lần này.",
                 "origin": "OpenSSL dẫn xuất trong handshake; ứng dụng chưa trích xuất.",
@@ -159,16 +131,10 @@ def explain_steps(result):
                 "purpose": "Xác thực nguồn gốc và tính toàn vẹn của dữ liệu đã ký.",
             }
         if "Nonce" in key:
-            if mode == "real":
-                return {
-                    "location": "Một phần nằm trong record nếu có; nonce đầy đủ ở trạng thái OpenSSL.",
-                    "origin": "OpenSSL tạo theo phiên bản TLS; trường tường minh được đọc từ record đã chụp.",
-                    "purpose": "Tham số AES-GCM cho mỗi record; ứng dụng không trích xuất nonce đầy đủ.",
-                }
             return {
-                "location": "A tạo trong mô hình, gửi kèm khung cho B; có bản sao trong log.",
-                "origin": "12 byte ngẫu nhiên từ os.urandom cho lần mã hóa này.",
-                "purpose": "Tham số AES-GCM; cần duy nhất với cùng khóa.",
+                "location": "Một phần nằm trong record nếu có; nonce đầy đủ ở trạng thái OpenSSL.",
+                "origin": "OpenSSL tạo theo phiên bản TLS; trường tường minh được đọc từ record đã chụp.",
+                "purpose": "Tham số AES-GCM cho mỗi record; ứng dụng không trích xuất nonce đầy đủ.",
             }
         if "AAD" in key:
             return {
@@ -260,11 +226,7 @@ def explain_steps(result):
         step["context"] = {
             "roles": roles,
             "storage": storage,
-            "scope": (
-                "Đây là kết nối SSL/TLS thực; chỉ trình bày giá trị backend đã ghi nhận."
-                if mode == "real"
-                else "Đây là mô hình dùng phép mật mã thực; handshake và khung truyền không tương thích TLS thật."
-            ),
+            "scope": "Đây là kết nối SSL/TLS thực; chỉ trình bày giá trị backend đã ghi nhận.",
         }
         step["explanations"] = {
             section: {

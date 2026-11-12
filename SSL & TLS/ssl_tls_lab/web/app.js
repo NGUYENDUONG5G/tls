@@ -1,64 +1,7 @@
 const $ = (id) => document.getElementById(id);
 let result = null,
   selected = 0;
-const names = {
-  rsa_bits: "Kích thước khóa RSA (bit)",
-  certificate_bytes: "Chứng chỉ (byte)",
-  subject: "Chủ thể",
-  certificate_sha256: "SHA-256 chứng chỉ",
-  note: "Ghi chú",
-  signature: "Chữ ký",
-  issuer: "CA phát hành",
-  hostname: "Tên máy chủ",
-  validity: "Thời hạn",
-  client_random: "Client random",
-  server_random: "Server random",
-  premaster_secret: "Bí mật tiền chủ",
-  rsa_ciphertext: "Bí mật đã mã hóa bằng RSA",
-  rsa_ciphertext_bytes: "Độ dài bản mã RSA (byte)",
-  matches_A: "Khớp bí mật của A",
-  A_public_x25519: "Khóa công khai X25519 của A",
-  B_public_x25519: "Khóa công khai X25519 của B",
-  signature_bytes: "Kích thước chữ ký (byte)",
-  hash: "Hàm băm",
-  A_shared_secret: "Bí mật chung phía A",
-  B_shared_secret: "Bí mật chung phía B",
-  matches: "Hai bí mật khớp",
-  algorithm: "Thuật toán dẫn xuất",
-  master_secret_A: "Master secret phía A",
-  master_secret_B: "Master secret phía B",
-  A_to_B_key_A: "Khóa A → B phía A",
-  A_to_B_key_B: "Khóa A → B phía B",
-  keys_match: "Hai khóa khớp",
-  plaintext_utf8: "Bản rõ UTF-8",
-  plaintext_hex: "Bản rõ (hex)",
-  nonce: "Nonce",
-  aad_utf8: "Dữ liệu xác thực bổ sung (AAD)",
-  ciphertext_hex: "Bản mã (hex)",
-  tag_hex: "Tag xác thực (hex)",
-  plaintext_bytes: "Bản rõ (byte)",
-  ciphertext_bytes: "Bản mã (byte)",
-  tag_bytes: "Tag (byte)",
-  address: "Địa chỉ",
-  frame_hex: "Khung gửi đi (hex)",
-  frame_bytes: "Độ dài khung (byte)",
-  length_prefix_bytes: "Tiền tố độ dài (byte)",
-  nonce_bytes: "Nonce (byte)",
-  tampered: "Đã sửa tag",
-  result: "Kết quả",
-  tag: "Xác thực tag",
-  matches_original: "Khớp thông điệp ban đầu",
-};
-const descriptions = [
-  "CA RSA tạo chứng chỉ thử nghiệm cho khóa xác thực của B.",
-  "A kiểm tra chữ ký CA, tên B.local và thời hạn của chứng chỉ.",
-  "A và B thiết lập bí mật ban đầu bằng phương pháp đã chọn.",
-  "Bí mật được kiểm tra hoặc tính độc lập tại hai phía.",
-  "A và B tự dẫn xuất khóa phiên từ cùng bí mật; giá trị phải khớp.",
-  "A dùng khóa phiên và nonce để mã hóa thông điệp và tạo tag xác thực.",
-  "Khung chứa nonce, bản mã và tag được chuyển qua TCP loopback.",
-  "B kiểm tra tag trước khi chấp nhận bản rõ.",
-];
+const LEGACY = ["SSL 2.0", "SSL 3.0", "TLS 1.0", "TLS 1.1"];
 const profiles = {
   "SSL 2.0": {
     exchange: ["RSA key transport"],
@@ -104,7 +47,9 @@ const profiles = {
   },
 };
 function buttonLabel() {
-  return $("mode").value === "real" ? "Chạy kết nối thực" : "Chạy mô hình";
+  return LEGACY.includes($("version").value)
+    ? "Chạy trong container"
+    : "Chạy từng bước";
 }
 function options(id, values, preferred) {
   const node = $(id);
@@ -112,32 +57,20 @@ function options(id, values, preferred) {
   if (values.includes(preferred)) node.value = preferred;
 }
 function updateChoices(source) {
-  const real = $("mode").value === "real";
-  if (
-    !real &&
-    source === "mode" &&
-    !["TLS 1.2", "TLS 1.3", "SSL 1.0"].includes($("version").value)
-  )
-    $("version").value = "TLS 1.2";
-  for (const opt of $("version").options)
-    opt.disabled =
-      !real && !["SSL 1.0", "TLS 1.2", "TLS 1.3"].includes(opt.value);
   const v = $("version").value,
     historical = v === "SSL 1.0",
     legacy = ["SSL 2.0", "SSL 3.0", "TLS 1.0", "TLS 1.1"].includes(v),
     profile = profiles[v];
   $("mode-title").textContent = historical
     ? "✳ SSL 1.0 · lịch sử"
-    : real
-      ? `✳ ${v} thực`
-      : "✳ Mô hình học tập";
+    : legacy
+      ? `✳ ${v} trong container`
+      : `✳ ${v} · mô hình từng bước`;
   $("mode-description").textContent = historical
     ? "Chưa có đặc tả hoặc triển khai công khai được xác minh; không thể chạy hoặc gán cipher suite."
-    : !real
-      ? "Quan sát phép toán mật mã thật trong mô hình; handshake và khung truyền không phải TLS thực."
-      : legacy
-        ? "Chạy bằng OpenSSL 1.0.2u trong container cô lập. Một số metric không thể tách riêng."
-        : "OpenSSL thực hiện handshake và mã hóa; log hiển thị TLS record, khóa phiên nằm trong thư viện.";
+    : legacy
+      ? "Chạy bằng OpenSSL 1.0.2u trong container cô lập. Một số metric không thể tách riêng."
+      : "Từng thông điệp handshake theo The Illustrated TLS Connection, tính với khóa mới ở mỗi lần chạy.";
   for (const id of ["exchange", "authentication", "cipher", "hash", "rsa_bits"])
     $(id).disabled = historical;
   if (historical) {
@@ -192,7 +125,7 @@ function updateChoices(source) {
         : "Chọn RSA hoặc ECDSA cho chứng chỉ server.";
   $("run").disabled = historical;
   $("run").innerHTML = buttonLabel() + " <span>→</span>";
-  $("tamper").disabled = historical || (real && legacy);
+  $("tamper").disabled = historical || legacy;
   if ($("tamper").disabled) $("tamper").checked = false;
   if (historical)
     $("status").textContent =
@@ -204,7 +137,6 @@ function updateChoices(source) {
   }
 }
 [
-  "mode",
   "version",
   "exchange",
   "cipher",
@@ -272,7 +204,7 @@ function renderMetrics() {
     ),
   );
   $("metrics-more").textContent =
-    `Xác thực & giải mã: ${fmt(m.decrypt_verify_ms)} ms   ·   CPU tiến trình: ${fmt(m.process_cpu_ms)} ms   ·   Tag: ${m.tag_bytes ?? "—"} byte   ·   ${result.mode === "real" ? `Handshake: ${fmt(m.handshake_ms)} ms / ${m.handshake_bytes ?? "—"} byte` : `Thiết lập mô hình: ${fmt(m.setup_ms)} ms`}`;
+    `Xác thực & giải mã: ${fmt(m.decrypt_verify_ms)} ms   ·   CPU tiến trình: ${fmt(m.process_cpu_ms)} ms   ·   Tag: ${m.tag_bytes ?? "—"} byte   ·   Handshake: ${fmt(m.handshake_ms)} ms / ${m.handshake_bytes ?? "—"} byte`;
 }
 function renderSteps() {
   const box = $("steps");
@@ -320,8 +252,14 @@ function renderDetail() {
       : s.duration_ms.toFixed(3) + " ms";
   head.append(title, time);
   desc.className = "detail-desc";
-  desc.textContent = s.description || descriptions[selected] || "";
+  desc.textContent = s.description || "";
   box.append(head, desc);
+  if (s.formula) {
+    const pre = document.createElement("pre");
+    pre.className = "formula";
+    pre.textContent = s.formula;
+    box.append(pre);
+  }
   if (s.method) {
     const method = document.createElement("p"),
       label = document.createElement("b");
@@ -353,7 +291,7 @@ function renderDetail() {
       row.className = "data-row";
       label.className = "data-key";
       data.className = "data-value";
-      label.textContent = names[key] || key;
+      label.textContent = key;
       data.textContent =
         value === null
           ? "Không có hoặc không quan sát được"
@@ -425,13 +363,15 @@ function renderDetail() {
     }
     box.append(section);
   }
-  const raw = document.createElement("details"),
-    summary = document.createElement("summary");
-  raw.className = "raw-details";
-  summary.textContent = "Xem thông tin gốc của bước";
-  raw.append(summary);
-  addRows(raw, s.details);
-  box.append(raw);
+  if (s.details) {
+    const raw = document.createElement("details"),
+      summary = document.createElement("summary");
+    raw.className = "raw-details";
+    summary.textContent = "Xem thông tin gốc của bước";
+    raw.append(summary);
+    addRows(raw, s.details);
+    box.append(raw);
+  }
 }
 async function run() {
   const text = $("message").value;
@@ -444,7 +384,6 @@ async function run() {
   $("status").textContent = "Đang tạo khóa và chạy các bước…";
   try {
     const request = {
-      mode: $("mode").value,
       message: text,
       config: {
         version: $("version").value,
@@ -472,26 +411,20 @@ async function run() {
     renderSteps();
     renderDetail();
     $("export").disabled = false;
-    const evidence =
-      data.steps.find((s) => s.details.observed_protocol) ||
-      data.steps.find((s) => s.details.certificate_verified);
-    const observed = evidence
-      ? (evidence.details.observed_protocol || evidence.details.version) +
-        " / " +
-        (evidence.details.suite || evidence.details.cipher) +
-        (evidence.details.observed_group
-          ? " / " + evidence.details.observed_group
-          : "") +
-        (evidence.details.authentication
-          ? " / " + evidence.details.authentication
-          : "")
-      : "thuật toán theo cấu hình mô hình";
-    $("run-summary").textContent =
-      (data.mode === "real" ? "KẾT NỐI THỰC" : "MÔ HÌNH") +
-      "  ·  " +
-      observed +
-      "  ·  " +
-      data.model;
+    const evidence = data.steps.find((s) => s.details?.observed_protocol);
+    const observed =
+      data.negotiated ||
+      (evidence
+        ? [
+            evidence.details.observed_protocol,
+            evidence.details.suite,
+            evidence.details.observed_group,
+            evidence.details.authentication,
+          ]
+            .filter(Boolean)
+            .join(" / ")
+        : data.config.version);
+    $("run-summary").textContent = observed + "  ·  " + data.model;
     const badge = $("result-badge");
     badge.className = "badge " + (data.status === "success" ? "ok" : "bad");
     badge.textContent =
