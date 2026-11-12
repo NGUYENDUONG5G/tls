@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Thực nghiệm SSL/TLS</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-icon">✳</div>
+          <div>
+            <b>SSL<span>/TLS</span></b
+            ><small>THỰC NGHIỆM</small>
+          </div>
+        </div>
+        <div class="side-label">THIẾT LẬP PHIÊN</div>
+        <p class="side-copy">
+          Chọn các thành phần mật mã trước khi gửi thông điệp.
+        </p>
+        <label
+          >Chế độ<select id="mode">
+            <option value="real">Kết nối thực</option>
+            <option value="model">Mô hình từng bước</option>
+          </select></label
+        >
+        <label
+          >Phiên bản<select id="version">
+            <option>SSL 1.0</option>
+            <option>SSL 2.0</option>
+            <option>SSL 3.0</option>
+            <option>TLS 1.0</option>
+            <option>TLS 1.1</option>
+            <option selected>TLS 1.2</option>
+            <option>TLS 1.3</option>
+          </select></label
+        >
+        <label
+          >Trao đổi khóa<select id="exchange">
+            <option>RSA key transport</option>
+            <option>ECDHE X25519</option>
+          </select></label
+        >
+        <label
+          >Xác thực<select id="authentication">
+            <option>RSA</option>
+          </select></label
+        >
+        <p id="auth-hint" class="field-hint"></p>
+        <label
+          >Mã hóa đối xứng<select id="cipher">
+            <option>AES-128-GCM</option>
+            <option>AES-256-GCM</option>
+          </select></label
+        >
+        <label
+          >Hàm băm<select id="hash">
+            <option>SHA-256</option>
+            <option>SHA-384</option>
+          </select></label
+        >
+        <label id="rsa-label"
+          >Kích thước khóa RSA<select id="rsa_bits">
+            <option>2048</option>
+            <option>3072</option>
+          </select></label
+        >
+        <div class="side-note">
+          <b id="mode-title">✳ Kết nối thực</b>
+          <p id="mode-description">
+            Quan sát handshake, dữ liệu và kết quả được thư viện SSL/TLS thực xử
+            lý.
+          </p>
+        </div>
+      </aside>
+      <main class="main">
+        <header>
+          <div><h1>Thực nghiệm SSL/TLS</h1></div>
+          <div class="header-tag">● &nbsp; LOCAL LAB</div>
+        </header>
+        <section class="compose card">
+          <div class="section-top">
+            <div>
+              <span class="section-number">01</span>
+              <h2>Thông điệp của bạn</h2>
+              <p>Nhập dữ liệu mà A muốn gửi cho B.</p>
+            </div>
+            <span class="badge">UTF-8</span>
+          </div>
+          <div class="composer">
+            <div class="sender-avatar">A</div>
+            <textarea id="message" rows="2" placeholder="Nhập thông điệp...">
+Xin chào B, đây là thông điệp bí mật từ A!</textarea
+            ><button id="run" class="primary">
+              Chạy kết nối thực <span>→</span>
+            </button>
+          </div>
+          <div class="compose-footer">
+            <label class="toggle"
+              ><input id="tamper" type="checkbox" /><span></span> Thử sửa bản
+              ghi khi truyền</label
+            ><span id="message-size">0 byte</span>
+          </div>
+        </section>
+        <section class="journey card">
+          <div class="section-top compact">
+            <div>
+              <span class="section-number">02</span>
+              <h2>Hành trình A → B</h2>
+            </div>
+            <span id="result-badge" class="badge pending">CHƯA CHẠY</span>
+          </div>
+          <p id="run-summary" class="run-summary">
+            Kết quả thực tế sẽ xuất hiện sau khi kết nối.
+          </p>
+          <div class="flow">
+            <div class="endpoint"><span>A</span><b>Người gửi</b></div>
+            <div class="flow-line">
+              <div class="flow-icon">◇</div>
+              <small>THIẾT LẬP KHÓA</small>
+            </div>
+            <div class="flow-line">
+              <div class="flow-icon">⌁</div>
+              <small>MÃ HÓA</small>
+            </div>
+            <div class="flow-line">
+              <div class="flow-icon">→</div>
+              <small>TRUYỀN TCP</small>
+            </div>
+            <div class="flow-line">
+              <div class="flow-icon">✓</div>
+              <small>XÁC THỰC</small>
+            </div>
+            <div class="endpoint receiver"><span>B</span><b>Người nhận</b></div>
+          </div>
+        </section>
+        <section class="metrics" id="metrics">
+          <article>
+            <span>TỔNG THỜI GIAN</span><b>— <small>ms</small></b
+            ><em>toàn bộ lượt chạy</em>
+          </article>
+          <article>
+            <span>MÃ HÓA</span><b>— <small>ms</small></b
+            ><em>AES-GCM</em>
+          </article>
+          <article>
+            <span>TRUYỀN TCP</span><b>— <small>ms</small></b
+            ><em>bao gồm tạo socket</em>
+          </article>
+          <article>
+            <span>DỮ LIỆU TRUYỀN</span><b>— <small>byte</small></b
+            ><em>khung minh họa</em>
+          </article>
+        </section>
+        <p id="metrics-more" class="metrics-more"></p>
+        <section class="explore">
+          <div class="timeline card">
+            <div class="panel-heading">
+              <div>
+                <span class="section-number">03</span>
+                <h2>Các bước xử lý</h2>
+              </div>
+              <span id="step-count" class="badge">0 BƯỚC</span>
+            </div>
+            <div id="steps" class="steps">
+              <p class="empty">Chạy minh họa để xem từng bước.</p>
+            </div>
+          </div>
+          <div class="detail card">
+            <div class="panel-heading">
+              <div>
+                <span class="section-number">04</span>
+                <h2>Chi tiết bước</h2>
+              </div>
+              <button
+                id="export"
+                class="secondary"
+                disabled
+                title="JSON có chứa khóa riêng của chứng chỉ thí nghiệm"
+              >
+                ↓ &nbsp; Xuất JSON (có khóa riêng)
+              </button>
+            </div>
+            <div id="detail" class="detail-body">
+              <p class="empty">Chọn một bước ở bên trái để khám phá dữ liệu.</p>
+            </div>
+          </div>
+        </section>
+        <footer>
+          <span><i class="dot"></i> Chạy trên máy của bạn</span
+          ><span id="status">Sẵn sàng</span>
+        </footer>
+      </main>
+    </div>
+    <script src="/app.js"></script>
+  </body>
+</html>

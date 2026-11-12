@@ -1,0 +1,353 @@
+[
+  {
+    "id": "ssl20-rc4-md5-rsa2048",
+    "protocol": "SSL2.0",
+    "cipher": "RC4-MD5",
+    "backend": "legacy",
+    "certificate": "rsa2048",
+    "group": null,
+    "family": "representative"
+  },
+  {
+    "id": "ssl20-des-cbc3-md5-rsa2048",
+    "protocol": "SSL2.0",
+    "cipher": "DES-CBC3-MD5",
+    "backend": "legacy",
+    "certificate": "rsa2048",
+    "group": null,
+    "family": "representative"
+  },
+  {
+    "id": "ssl20-exp-rc4-md5-rsa2048",
+    "protocol": "SSL2.0",
+    "cipher": "EXP-RC4-MD5",
+    "backend": "legacy",
+    "certificate": "rsa2048",
+    "group": null,
+    "family": "representative"
+  },
+  {
+    "id": "ssl30-rc4-md5-rsa2048",
+    "protocol": "SSL3.0",
+    "cipher": "RC4-MD5",
+    "backend": "legacy",
+    "certificate": "rsa2048",
+    "group": null,
+    "family": "representative"
+  },
+  {
+    "id": "ssl30-des-cbc3-sha-rsa2048",
+    "protocol": "SSL3.0",
+    "cipher": "DES-CBC3-SHA",
+    "backend": "legacy",
+    "certificate": "rsa2048",
+    "group": null,
+    "family": "representative"
+  },
+  {
+    "id": "tls10-aes128-sha-rsa2048",
+    "protocol": "TLS1.0",
+    "cipher": "AES128-SHA",
+    "backend": "legacy",
+    "certificate": "rsa2048",
+    "group": null,
+    "family": "representative"
+  },
+  {
+    "id": "tls10-aes256-sha-rsa2048",
+    "protocol": "TLS1.0",
+    "cipher": "AES256-SHA",
+    "backend": "legacy",
+    "certificate": "rsa2048",
+    "group": null,
+    "family": "representative"
+  },
+  {
+    "id": "tls10-dhe-rsa-aes128-sha-rsa2048",
+    "protocol": "TLS1.0",
+    "cipher": "DHE-RSA-AES128-SHA",
+    "backend": "legacy",
+    "certificate": "rsa2048",
+    "group": null,
+    "family": "representative"
+  },
+  {
+    "id": "tls10-ecdhe-rsa-aes128-sha-rsa2048",
+    "protocol": "TLS1.0",
+    "cipher": "ECDHE-RSA-AES128-SHA",
+    "backend": "legacy",
+    "certificate": "rsa2048",
+    "group": "P-256",
+    "family": "representative"
+  },
+  {
+    "id": "tls11-aes128-sha-rsa2048",
+    "protocol": "TLS1.1",
+    "cipher": "AES128-SHA",
+    "backend": "legacy",
+    "certificate": "rsa2048",
+    "group": null,
+    "family": "representative"
+  },
+  {
+    "id": "tls11-aes256-sha-rsa2048",
+    "protocol": "TLS1.1",
+    "cipher": "AES256-SHA",
+    "backend": "legacy",
+    "certificate": "rsa2048",
+    "group": null,
+    "family": "representative"
+  },
+  {
+    "id": "tls11-dhe-rsa-aes128-sha-rsa2048",
+    "protocol": "TLS1.1",
+    "cipher": "DHE-RSA-AES128-SHA",
+    "backend": "legacy",
+    "certificate": "rsa2048",
+    "group": null,
+    "family": "representative"
+  },
+  {
+    "id": "tls11-ecdhe-rsa-aes128-sha-rsa2048",
+    "protocol": "TLS1.1",
+    "cipher": "ECDHE-RSA-AES128-SHA",
+    "backend": "legacy",
+    "certificate": "rsa2048",
+    "group": "P-256",
+    "family": "representative"
+  },
+  {
+    "id": "tls12-ecdhe-rsa-aes128-gcm-sha256-rsa2048",
+    "protocol": "TLS1.2",
+    "cipher": "ECDHE-RSA-AES128-GCM-SHA256",
+    "backend": "modern",
+    "certificate": "rsa2048",
+    "group": "X25519",
+    "family": "representative"
+  },
+  {
+    "id": "tls12-ecdhe-rsa-aes256-gcm-sha384-rsa2048",
+    "protocol": "TLS1.2",
+    "cipher": "ECDHE-RSA-AES256-GCM-SHA384",
+    "backend": "modern",
+    "certificate": "rsa2048",
+    "group": "X25519",
+    "family": "representative"
+  },
+  {
+    "id": "tls12-ecdhe-rsa-chacha20-poly1305-rsa2048",
+    "protocol": "TLS1.2",
+    "cipher": "ECDHE-RSA-CHACHA20-POLY1305",
+    "backend": "modern",
+    "certificate": "rsa2048",
+    "group": "X25519",
+    "family": "representative"
+  },
+  {
+    "id": "tls12-ecdhe-ecdsa-aes128-gcm-sha256-ecdsa256",
+    "protocol": "TLS1.2",
+    "cipher": "ECDHE-ECDSA-AES128-GCM-SHA256",
+    "backend": "modern",
+    "certificate": "ecdsa256",
+    "group": "X25519",
+    "family": "representative"
+  },
+  {
+    "id": "tls12-ecdhe-ecdsa-aes256-gcm-sha384-ecdsa256",
+    "protocol": "TLS1.2",
+    "cipher": "ECDHE-ECDSA-AES256-GCM-SHA384",
+    "backend": "modern",
+    "certificate": "ecdsa256",
+    "group": "X25519",
+    "family": "representative"
+  },
+  {
+    "id": "tls12-ecdhe-ecdsa-chacha20-poly1305-ecdsa256",
+    "protocol": "TLS1.2",
+    "cipher": "ECDHE-ECDSA-CHACHA20-POLY1305",
+    "backend": "modern",
+    "certificate": "ecdsa256",
+    "group": "X25519",
+    "family": "representative"
+  },
+  {
+    "id": "tls12-dhe-rsa-aes128-gcm-sha256-rsa2048",
+    "protocol": "TLS1.2",
+    "cipher": "DHE-RSA-AES128-GCM-SHA256",
+    "backend": "modern",
+    "certificate": "rsa2048",
+    "group": null,
+    "family": "representative"
+  },
+  {
+    "id": "tls12-aes128-gcm-sha256-rsa2048",
+    "protocol": "TLS1.2",
+    "cipher": "AES128-GCM-SHA256",
+    "backend": "modern",
+    "certificate": "rsa2048",
+    "group": null,
+    "family": "representative"
+  },
+  {
+    "id": "tls12-ecdhe-rsa-aes128-sha256-rsa2048",
+    "protocol": "TLS1.2",
+    "cipher": "ECDHE-RSA-AES128-SHA256",
+    "backend": "modern",
+    "certificate": "rsa2048",
+    "group": "X25519",
+    "family": "representative"
+  },
+  {
+    "id": "tls12-aes128-sha-rsa2048",
+    "protocol": "TLS1.2",
+    "cipher": "AES128-SHA",
+    "backend": "modern",
+    "certificate": "rsa2048",
+    "group": null,
+    "family": "representative"
+  },
+  {
+    "id": "tls13-tls-aes-128-gcm-sha256-rsa2048",
+    "protocol": "TLS1.3",
+    "cipher": "TLS_AES_128_GCM_SHA256",
+    "backend": "modern",
+    "certificate": "rsa2048",
+    "group": "X25519",
+    "family": "representative"
+  },
+  {
+    "id": "tls13-tls-aes-128-gcm-sha256-ecdsa256",
+    "protocol": "TLS1.3",
+    "cipher": "TLS_AES_128_GCM_SHA256",
+    "backend": "modern",
+    "certificate": "ecdsa256",
+    "group": "X25519",
+    "family": "representative"
+  },
+  {
+    "id": "tls13-tls-aes-256-gcm-sha384-rsa2048",
+    "protocol": "TLS1.3",
+    "cipher": "TLS_AES_256_GCM_SHA384",
+    "backend": "modern",
+    "certificate": "rsa2048",
+    "group": "X25519",
+    "family": "representative"
+  },
+  {
+    "id": "tls13-tls-aes-256-gcm-sha384-ecdsa256",
+    "protocol": "TLS1.3",
+    "cipher": "TLS_AES_256_GCM_SHA384",
+    "backend": "modern",
+    "certificate": "ecdsa256",
+    "group": "X25519",
+    "family": "representative"
+  },
+  {
+    "id": "tls13-tls-chacha20-poly1305-sha256-rsa2048",
+    "protocol": "TLS1.3",
+    "cipher": "TLS_CHACHA20_POLY1305_SHA256",
+    "backend": "modern",
+    "certificate": "rsa2048",
+    "group": "X25519",
+    "family": "representative"
+  },
+  {
+    "id": "tls13-tls-chacha20-poly1305-sha256-ecdsa256",
+    "protocol": "TLS1.3",
+    "cipher": "TLS_CHACHA20_POLY1305_SHA256",
+    "backend": "modern",
+    "certificate": "ecdsa256",
+    "group": "X25519",
+    "family": "representative"
+  },
+  {
+    "id": "tls13-tls-aes-128-ccm-sha256-rsa2048",
+    "protocol": "TLS1.3",
+    "cipher": "TLS_AES_128_CCM_SHA256",
+    "backend": "modern",
+    "certificate": "rsa2048",
+    "group": "X25519",
+    "family": "representative"
+  },
+  {
+    "id": "tls13-tls-aes-128-ccm-8-sha256-rsa2048",
+    "protocol": "TLS1.3",
+    "cipher": "TLS_AES_128_CCM_8_SHA256",
+    "backend": "modern",
+    "certificate": "rsa2048",
+    "group": "X25519",
+    "family": "representative"
+  },
+  {
+    "id": "tls12-ecdhe-rsa-aes128-gcm-sha256-rsa3072-key-sweep",
+    "protocol": "TLS1.2",
+    "cipher": "ECDHE-RSA-AES128-GCM-SHA256",
+    "backend": "modern",
+    "certificate": "rsa3072",
+    "group": "X25519",
+    "family": "sweep"
+  },
+  {
+    "id": "tls12-ecdhe-ecdsa-aes128-gcm-sha256-ecdsa384-key-sweep",
+    "protocol": "TLS1.2",
+    "cipher": "ECDHE-ECDSA-AES128-GCM-SHA256",
+    "backend": "modern",
+    "certificate": "ecdsa384",
+    "group": "X25519",
+    "family": "sweep"
+  },
+  {
+    "id": "tls12-ecdhe-rsa-aes128-gcm-sha256-rsa2048-p256",
+    "protocol": "TLS1.2",
+    "cipher": "ECDHE-RSA-AES128-GCM-SHA256",
+    "backend": "modern",
+    "certificate": "rsa2048",
+    "group": "P-256",
+    "family": "sweep"
+  },
+  {
+    "id": "tls13-tls-aes-128-gcm-sha256-rsa3072-key-sweep",
+    "protocol": "TLS1.3",
+    "cipher": "TLS_AES_128_GCM_SHA256",
+    "backend": "modern",
+    "certificate": "rsa3072",
+    "group": "X25519",
+    "family": "sweep"
+  },
+  {
+    "id": "tls13-tls-aes-128-gcm-sha256-ecdsa384-key-sweep",
+    "protocol": "TLS1.3",
+    "cipher": "TLS_AES_128_GCM_SHA256",
+    "backend": "modern",
+    "certificate": "ecdsa384",
+    "group": "X25519",
+    "family": "sweep"
+  },
+  {
+    "id": "tls13-tls-aes-128-gcm-sha256-rsa2048-p256",
+    "protocol": "TLS1.3",
+    "cipher": "TLS_AES_128_GCM_SHA256",
+    "backend": "modern",
+    "certificate": "rsa2048",
+    "group": "P-256",
+    "family": "sweep"
+  },
+  {
+    "id": "tls12-ecdhe-rsa-aes128-gcm-sha256-rsa2048-bridge-legacy",
+    "protocol": "TLS1.2",
+    "cipher": "ECDHE-RSA-AES128-GCM-SHA256",
+    "backend": "legacy",
+    "certificate": "rsa2048",
+    "group": "P-256",
+    "family": "bridge"
+  },
+  {
+    "id": "tls13-tls-aes-128-gcm-sha256-rsa2048-hybrid",
+    "protocol": "TLS1.3",
+    "cipher": "TLS_AES_128_GCM_SHA256",
+    "backend": "modern",
+    "certificate": "rsa2048",
+    "group": "X25519MLKEM768",
+    "family": "hybrid"
+  }
+]

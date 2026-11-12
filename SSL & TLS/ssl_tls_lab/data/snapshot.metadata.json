@@ -1,0 +1,21 @@
+{
+  "retrieved_at": "2026-11-08",
+  "source": "https://www.iana.org/assignments/tls-parameters/",
+  "files": {
+    "tls-cipher-suites.csv": {
+      "url": "https://www.iana.org/assignments/tls-parameters/tls-parameters-4.csv",
+      "sha256": "949ed87e901bb77314a96ad5a7b78c0b4b38ec56d16425efa2057a2efbd1570f",
+      "rows": 450
+    },
+    "tls-groups.csv": {
+      "url": "https://www.iana.org/assignments/tls-parameters/tls-parameters-8.csv",
+      "sha256": "d35959b23d588f8b4daa038788f168227cc1e909500a8a4d8412b0f6aeffbc17",
+      "rows": 105
+    },
+    "tls-signatures.csv": {
+      "url": "https://www.iana.org/assignments/tls-parameters/tls-signaturescheme.csv",
+      "sha256": "df70d06b074d8ef96d978ac83f5b3e232d04b59bb88a986dbc73a2242513dbf9",
+      "rows": 563
+    }
+  }
+}

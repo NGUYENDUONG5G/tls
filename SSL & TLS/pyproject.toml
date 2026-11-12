@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ssl-tls-lab"
+version = "0.1.0"
+description = "Quan sát thông điệp SSL/TLS qua kết nối thực và mô hình mật mã"
+requires-python = ">=3.12"
+dependencies = [
+    "cryptography>=44,<47",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+
+[project.scripts]
+ssl-tls-lab = "ssl_tls_lab.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["ssl_tls_lab*"]
+
+[tool.setuptools.package-data]
+ssl_tls_lab = ["web/*.html", "web/*.css", "web/*.js"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+

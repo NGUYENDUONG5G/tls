@@ -1,0 +1,44 @@
+"""Named finite-field groups used for explicitly selected DHE experiments."""
+
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import dh
+
+P = int(
+    """FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1
+29024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD
+3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44
+C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B
+1FE649286651ECE45B3DC2007CB8A163BF0598DA48361C55D39A69163
+FA8FD24CF5F83655D23DCA3AD961C62F356208552BB9ED529077096966
+D670C354E4ABC9804F1746C08CA18217C32905E462E36CE3BE39E772C
+180E86039B2783A2EC07A28FB5C55DF06F4C52C9DE2BCBF695581718
+3995497CEA956AE515D2261898FA051015728E5A8AACAA68FFFFFFFF
+FFFFFFFF""".replace("\n", ""),
+    16,
+)
+
+
+def parameters():
+    return dh.DHParameterNumbers(P, 2).parameters()
+
+
+def pem():
+    return parameters().parameter_bytes(
+        serialization.Encoding.PEM, serialization.ParameterFormat.PKCS3
+    )
+
+
+# RFC 7919 ffdhe2048, encoded as PKCS#3 DH parameters.
+FFDHE2048 = b"""-----BEGIN DH PARAMETERS-----
+MIIBCAKCAQEA//////////+t+FRYortKmq/cViAnPTzx2LnFg84tNpWp4TZBFGQz
++8yTnc4kmz75fS/jY2MMddj2gbICrsRhetPfHtXV/WVhJDP1H18GbtCFY2VVPe0a
+87VXE15/V8k1mE8McODmi3fipona8+/och3xWKE2rec1MKzKT0g6eXq8CrGCsyT7
+YdEIqUuyyOP7uWrat2DX9GgdT0Kj3jlN9K5W7edjcrsZCwenyO4KbXCeAvzhzffi
+7MA0BM0oNC9hkXL+nOmFg/+OTxIy7vKBg8P+OxtMb61zO7X8vC7CIAXFjvGDfRaD
+ssbzSibBsu/6iGtCOGEoXJf//////////wIBAg==
+-----END DH PARAMETERS-----
+"""
+
+
+def ffdhe_parameters():
+    return serialization.load_pem_parameters(FFDHE2048)
